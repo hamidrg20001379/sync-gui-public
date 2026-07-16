@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            artifact: Sync-GUI-win32-x64
+            asset_paths: |
+              dist/Sync-GUI-win32-x64.zip
+              dist/Sync-GUI-Setup-win32-x64.exe
+          - name: Linux x64
+            os: ubuntu-latest
+            artifact: Sync-GUI-linux-x64
+            asset_paths: dist/Sync-GUI-linux-x64.tar.gz
+          - name: macOS arm64
+            os: macos-26
+            artifact: Sync-GUI-darwin-arm64
+            asset_paths: dist/Sync-GUI-darwin-arm64.tar.gz
+          - name: macOS x64
+            os: macos-26-intel
+            artifact: Sync-GUI-darwin-x64
+            asset_paths: dist/Sync-GUI-darwin-x64.tar.gz
+
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: .electron-cache
+          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package portable app
+        env:
+          electron_config_cache: ${{ github.workspace }}/.electron-cache
+        run: npm run dist
+
+      - name: Archive Windows portable app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "dist/${{ matrix.artifact }}" -DestinationPath "dist/${{ matrix.artifact }}.zip" -Force
+
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        run: npm run installer:win
+
+      - name: Archive portable app
+        if: runner.os != 'Windows'
+        run: tar -czf "dist/${{ matrix.artifact }}.tar.gz" -C dist "${{ matrix.artifact }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.asset_paths }}
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assetText = @'
+          ${{ matrix.asset_paths }}
+          '@
+          $assets = $assetText -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title $tag --generate-notes
+            if ($LASTEXITCODE -ne 0) {
+              gh release view $tag *> $null
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+            }
+          }
+          foreach ($asset in $assets) {
+            gh release upload $tag $asset --clobber
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

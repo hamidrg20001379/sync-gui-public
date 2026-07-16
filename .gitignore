@@ -1,0 +1,8 @@
+node_modules/
+.next/
+dist/
+dev.log
+.mimocode
+.electron-cache/
+.env
+sync-projects.json

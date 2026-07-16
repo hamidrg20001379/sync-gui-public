@@ -1,0 +1,22 @@
+{
+  "name": "sync-gui",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "electron": "set ELECTRON_RUN_AS_NODE=&& electron .",
+    "electron:dev": "set ELECTRON_RUN_AS_NODE=&& electron .",
+    "dist": "npm run build && node scripts/package.js",
+    "installer:win": "node scripts/package-win-installer.js"
+  },
+  "dependencies": {
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "electron": "^43.1.1"
+  }
+}
