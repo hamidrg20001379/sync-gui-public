@@ -44,7 +44,7 @@ Type=Application
 Name=${productName}
 Exec=${appId}
 Icon=${appId}
-Categories=Utility;Development;
+Categories=Utility;
 Terminal=false
 `);
 
@@ -58,6 +58,7 @@ const icon = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" v
 `;
 
 writeFile(path.join(appDir, 'usr', 'share', 'icons', 'hicolor', 'scalable', 'apps', `${appId}.svg`), icon);
+writeFile(path.join(appDir, `${appId}.svg`), icon);
 writeFile(path.join(appDir, '.DirIcon'), icon);
 
 execFileSync(appImageTool(), [appDir, appImagePath], {
