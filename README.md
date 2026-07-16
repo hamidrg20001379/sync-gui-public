@@ -1,5 +1,7 @@
 # Sync GUI
 
+**ENGLISH** | [فارسی](README.fa.md)
+
 Sync GUI is a local desktop/web interface for managing repeatable file sync mappings between projects and remote targets. It is useful when one project has several deployment targets, and each target needs its own independent categories and file/folder mappings.
 
 ![Sync GUI demo with mock data](docs/demo.gif)
@@ -11,7 +13,7 @@ Sync GUI is a local desktop/web interface for managing repeatable file sync mapp
 - Sync individual mappings, whole categories, or complete remotes.
 - Supports SSH, local folders, and network share style remotes.
 - Includes GitHub Actions workflows for CI and release builds.
-- Release workflow can publish Windows portable zip, Windows installer, Linux archive, and macOS archives.
+- Release workflow can publish Windows portable zip, Windows installer, Linux archive, macOS archives, DMG files, and Linux AppImage files.
 - Checks GitHub Releases for updates and asks before opening the right download.
 
 ## Privacy
@@ -97,75 +99,3 @@ Credentials can be read from `.env` through fields such as:
   "passwordEnv": "SERVER_PASSWORD"
 }
 ```
-
-## فارسی
-
-# سینک گرافیکی
-
-Sync GUI یک رابط محلی برای مدیریت سینک فایل‌ها و پوشه‌ها بین پروژه‌ها و مقصدهای مختلف است. وقتی یک پروژه چند مقصد مثل production و staging دارد و هر مقصد دسته‌بندی‌ها و مسیرهای خودش را دارد، این ابزار کمک می‌کند همه چیز مرتب و قابل تکرار بماند.
-
-## امکانات
-
-- مدیریت پروژه‌ها، ریموت‌ها، دسته‌بندی‌ها و mappingها از داخل یک UI.
-- هر ریموت داخل پروژه دسته‌بندی‌های مستقل خودش را دارد.
-- امکان استفاده دوباره از اطلاعات اتصال بین چند ریموت پروژه.
-- سینک یک mapping، یک دسته‌بندی کامل، یا کل یک ریموت.
-- پشتیبانی از SSH، مسیر محلی، و مسیرهای network share.
-- دارای GitHub Actions برای build و release.
-- بررسی نسخه‌های جدید از GitHub Releases و سوال از کاربر قبل از دانلود.
-
-## حریم خصوصی
-
-این نسخه عمومی هیچ کانفیگ واقعی، credential، مسیر سرور، IP، یا اطلاعات پروژه خصوصی ندارد.
-
-فایل‌های واقعی خودتان را فقط به صورت local نگه دارید:
-
-- `sync-projects.json`
-- `.env`
-
-این فایل‌ها در `.gitignore` قرار دارند. برای شروع از فایل‌های نمونه استفاده کنید:
-
-```powershell
-Copy-Item sync-projects.example.json sync-projects.json
-Copy-Item .env.example .env
-```
-
-## اجرای سریع
-
-```powershell
-npm install
-Copy-Item sync-projects.example.json sync-projects.json
-Copy-Item .env.example .env
-npm run dev
-```
-
-بعد آدرس محلی Next.js را که در ترمینال نمایش داده می‌شود باز کنید.
-
-برای اجرای نسخه Electron:
-
-```powershell
-npm run electron
-```
-
-## ساخت خروجی
-
-```powershell
-npm run build
-npm run dist
-```
-
-برای ساخت فایل نصب یا بسته تک‌فایلی، بعد از ساخت نسخه portable:
-
-```powershell
-npm run installer:win
-npm run installer:mac
-npm run installer:linux
-```
-
-ساخت installer ویندوز به Inno Setup نیاز دارد. خروجی macOS به صورت `.dmg` و خروجی Linux به صورت `.AppImage` ساخته می‌شود.
-
-## به‌روزرسانی
-
-برنامه در هر session یک بار GitHub Releases را بررسی می‌کند و همچنین دکمه `Check updates` دارد. اگر نسخه جدیدتری وجود داشته باشد، قبل از باز کردن لینک دانلود از کاربر سوال می‌پرسد.
-
-این روش update را بی‌صدا نصب نمی‌کند؛ فقط فایل مناسب سیستم‌عامل را برای دانلود باز می‌کند.
