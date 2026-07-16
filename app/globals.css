@@ -18,7 +18,7 @@
   --gradient-accent: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
   --gradient-warm: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
   --gradient-cool: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
-  --radius: 16px;
+  --radius: 8px;
 }
 
 * { box-sizing: border-box; }
@@ -286,24 +286,27 @@ label {
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(292px, 1fr));
+  gap: 16px;
   align-items: stretch;
 }
 
 .card {
   position: relative;
-  min-height: 154px;
+  min-height: 162px;
   display: grid;
-  place-items: center;
-  gap: 14px;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
   border: 1px solid rgba(225, 231, 240, .7);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, .75);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(248, 250, 252, .86)),
+    rgba(255, 255, 255, .75);
   backdrop-filter: blur(16px) saturate(1.6);
   -webkit-backdrop-filter: blur(16px) saturate(1.6);
   box-shadow: var(--shadow-card);
-  padding: 36px 24px 58px;
+  padding: 34px 22px 62px;
   text-align: center;
   transition: all .25s cubic-bezier(.4, 0, .2, 1);
   overflow: hidden;
@@ -336,7 +339,7 @@ label {
 .card:hover {
   border-color: rgba(37, 99, 235, .2);
   box-shadow: var(--shadow-card-hover);
-  transform: translateY(-4px);
+  transform: translateY(-3px);
   background: rgba(255, 255, 255, .92);
 }
 
@@ -347,7 +350,7 @@ label {
 .card h3 {
   margin: 0;
   width: 100%;
-  max-width: 220px;
+  max-width: 240px;
   font-size: 17px;
   font-weight: 800;
   line-height: 1.3;
@@ -365,7 +368,10 @@ label {
 }
 
 .card-main {
+  display: grid;
+  gap: 6px;
   min-width: 0;
+  justify-items: center;
 }
 
 .stats {
@@ -376,10 +382,10 @@ label {
 
 .stats span {
   border: 1px solid rgba(225, 231, 240, .6);
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(247, 249, 252, .8);
   backdrop-filter: blur(8px);
-  padding: 5px 12px;
+  padding: 5px 10px;
   color: #475467;
   font-size: 12px;
   font-weight: 600;
@@ -470,6 +476,9 @@ label {
 
 .category-card {
   cursor: grab;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .94), rgba(250, 245, 255, .78)),
+    rgba(255, 255, 255, .75);
 }
 
 .category-card:active {
@@ -567,6 +576,24 @@ label {
   color: var(--accent);
   background: rgba(255, 255, 255, .5);
   backdrop-filter: blur(8px);
+}
+
+.project-card::after {
+  background: linear-gradient(90deg, #2563eb 0%, #06b6d4 100%);
+}
+
+.remote-card::after {
+  background: linear-gradient(90deg, #0f766e 0%, #14b8a6 100%);
+}
+
+.project-card:hover {
+  border-color: rgba(6, 182, 212, .25);
+  box-shadow: 0 12px 34px rgba(6, 182, 212, .12), 0 2px 8px rgba(15, 23, 42, .06);
+}
+
+.remote-card:hover {
+  border-color: rgba(20, 184, 166, .25);
+  box-shadow: 0 12px 34px rgba(20, 184, 166, .12), 0 2px 8px rgba(15, 23, 42, .06);
 }
 
 .add-card:hover {
