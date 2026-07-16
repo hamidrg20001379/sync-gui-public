@@ -29,15 +29,21 @@ jobs:
           - name: Linux x64
             os: ubuntu-latest
             artifact: Sync-GUI-linux-x64
-            asset_paths: dist/Sync-GUI-linux-x64.tar.gz
+            asset_paths: |
+              dist/Sync-GUI-linux-x64.tar.gz
+              dist/Sync-GUI-linux-x64.AppImage
           - name: macOS arm64
             os: macos-26
             artifact: Sync-GUI-darwin-arm64
-            asset_paths: dist/Sync-GUI-darwin-arm64.tar.gz
+            asset_paths: |
+              dist/Sync-GUI-darwin-arm64.tar.gz
+              dist/Sync-GUI-darwin-arm64.dmg
           - name: macOS x64
             os: macos-26-intel
             artifact: Sync-GUI-darwin-x64
-            asset_paths: dist/Sync-GUI-darwin-x64.tar.gz
+            asset_paths: |
+              dist/Sync-GUI-darwin-x64.tar.gz
+              dist/Sync-GUI-darwin-x64.dmg
 
     env:
       NEXT_TELEMETRY_DISABLED: "1"
@@ -85,6 +91,41 @@ jobs:
       - name: Archive portable app
         if: runner.os != 'Windows'
         run: tar -czf "dist/${{ matrix.artifact }}.tar.gz" -C dist "${{ matrix.artifact }}"
+
+      - name: Package macOS DMG
+        if: runner.os == 'macOS'
+        run: npm run installer:mac
+
+      - name: Install appimagetool
+        if: runner.os == 'Linux'
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          with urllib.request.urlopen('https://api.github.com/repos/AppImage/appimagetool/releases/latest') as response:
+              release = json.load(response)
+
+          assets = release.get('assets', [])
+          candidates = [
+              asset['browser_download_url']
+              for asset in assets
+              if asset.get('name', '').endswith('x86_64.AppImage')
+          ]
+          if not candidates:
+              raise SystemExit('Could not find x86_64 appimagetool asset')
+
+          urllib.request.urlretrieve(candidates[0], 'appimagetool')
+          os.chmod('appimagetool', 0o755)
+          PY
+
+      - name: Package Linux AppImage
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGETOOL: ${{ github.workspace }}/appimagetool
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: npm run installer:linux
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

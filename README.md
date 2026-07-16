@@ -58,13 +58,15 @@ Create a portable desktop package for your current OS:
 npm run dist
 ```
 
-Create a Windows installer after building the Windows portable package:
+Create a one-file installer/package after building the portable package:
 
 ```powershell
 npm run installer:win
+npm run installer:mac
+npm run installer:linux
 ```
 
-The Windows installer build requires Inno Setup.
+The Windows installer build requires Inno Setup. macOS creates a `.dmg`, and Linux creates an `.AppImage`.
 
 ## Configuration
 
@@ -140,10 +142,12 @@ npm run build
 npm run dist
 ```
 
-برای ساخت installer ویندوز، بعد از ساخت نسخه portable:
+برای ساخت فایل نصب یا بسته تک‌فایلی، بعد از ساخت نسخه portable:
 
 ```powershell
 npm run installer:win
+npm run installer:mac
+npm run installer:linux
 ```
 
-ساخت installer ویندوز به Inno Setup نیاز دارد.
+ساخت installer ویندوز به Inno Setup نیاز دارد. خروجی macOS به صورت `.dmg` و خروجی Linux به صورت `.AppImage` ساخته می‌شود.
