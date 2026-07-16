@@ -30,6 +30,13 @@ function copyRequired(name) {
   fs.cpSync(source, target, { recursive: true });
 }
 
+function copyFiltered(source, target, skip) {
+  fs.cpSync(source, target, {
+    recursive: true,
+    filter: (item) => !skip(path.relative(source, item).replace(/\\/g, '/'))
+  });
+}
+
 function psQuote(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -140,8 +147,6 @@ function copyApp() {
     'app',
     'electron',
     'lib',
-    '.next',
-    'node_modules',
     'next.config.mjs',
     'package.json',
     'package-lock.json',
@@ -149,6 +154,19 @@ function copyApp() {
   ]) {
     copyRequired(name);
   }
+
+  // ponytail: exclude duplicated/dev-only payload; switch to Next standalone if the app needs a much smaller runtime.
+  copyFiltered(path.join(root, '.next'), path.join(appDir, '.next'), (relative) => (
+    relative === 'cache' ||
+    relative.startsWith('cache/') ||
+    relative === 'dev' ||
+    relative.startsWith('dev/')
+  ));
+
+  copyFiltered(path.join(root, 'node_modules'), path.join(appDir, 'node_modules'), (relative) => (
+    relative === 'electron' ||
+    relative.startsWith('electron/')
+  ));
 }
 
 function selfCheck() {
