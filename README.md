@@ -6,6 +6,18 @@ Sync GUI is a local desktop/web interface for managing repeatable file sync mapp
 
 ![Sync GUI demo with mock data](docs/demo.gif)
 
+## Download
+
+If you just want to install the app, use the latest release downloads:
+
+- [Windows installer `.exe`](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-Setup-win32-x64.exe)
+- [Windows portable `.zip`](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-win32-x64.zip)
+- [macOS Apple Silicon `.dmg`](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-darwin-arm64.dmg)
+- [macOS Intel `.dmg`](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-darwin-x64.dmg)
+- [Linux AppImage](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-linux-x64.AppImage)
+
+All release files are also on the [latest release page](https://github.com/hamidrg20001379/sync-gui-public/releases/latest).
+
 ## Features
 
 - Manage projects, remotes, categories, and file/folder mappings from one UI.
