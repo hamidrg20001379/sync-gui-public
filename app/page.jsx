@@ -35,10 +35,17 @@ export default function Page() {
   const [dragCategoryId, setDragCategoryId] = useState('');
   const [categoryPath, setCategoryPath] = useState([]);
   const [liveCategoryIds, setLiveCategoryIds] = useState([]);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const liveRunningRef = useRef(new Set());
 
   useEffect(() => {
     loadConfig();
+  }, []);
+
+  useEffect(() => {
+    if (sessionStorage.getItem('sync-gui-update-checked')) return;
+    sessionStorage.setItem('sync-gui-update-checked', '1');
+    checkForUpdates(false);
   }, []);
 
   const project = useMemo(
@@ -162,6 +169,31 @@ export default function Page() {
     const data = await response.json();
     setOutput((old) => `${old}${data.output || data.error || ''}\nExit code: ${data.exitCode ?? 1}`);
     setStatus((data.exitCode ?? 1) === 0 ? 'Live' : 'Failed');
+  }
+
+  async function checkForUpdates(manual = true) {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    try {
+      const response = await fetch('/api/update');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not check for updates.');
+
+      if (!data.updateAvailable) {
+        if (manual) setOutput(`Sync GUI is up to date (${data.currentVersion}).`);
+        return;
+      }
+
+      const target = data.assetName || 'the latest release';
+      const message = `Sync GUI ${data.latestVersion} is available.\n\nDownload ${target}?`;
+      if (confirm(message)) {
+        window.open(data.downloadUrl || data.releaseUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      if (manual) setOutput(error.message);
+    } finally {
+      setCheckingUpdate(false);
+    }
   }
 
   function toggleLiveCategory(id) {
@@ -453,6 +485,9 @@ export default function Page() {
             </div>
           )}
           <span className={`status ${status.toLowerCase()}`}>{dirty ? `${status} - unsaved` : status}</span>
+          <button onClick={() => checkForUpdates(true)} disabled={checkingUpdate}>
+            {checkingUpdate ? 'Checking...' : 'Check updates'}
+          </button>
           <button onClick={loadConfig}>Reload</button>
           <button className="primary" onClick={() => saveConfig()}>Save</button>
         </div>

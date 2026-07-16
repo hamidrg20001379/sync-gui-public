@@ -1,7 +1,12 @@
 {
   "name": "sync-gui",
+  "version": "1.0.0",
   "main": "electron/main.js",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hamidrg20001379/sync-gui-public.git"
+  },
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
