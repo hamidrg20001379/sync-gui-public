@@ -12,6 +12,8 @@ const installerPath = path.join(distDir, `${installerName}.exe`);
 const issPath = path.join(distDir, 'sync-gui-installer.iss');
 
 function findIscc() {
+  if (process.env.ISCC && fs.existsSync(process.env.ISCC)) return process.env.ISCC;
+
   try {
     return execFileSync('where', ['ISCC.exe'], { encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/)[0];
   } catch {
@@ -23,7 +25,7 @@ function findIscc() {
     if (found) return found;
   }
 
-  throw new Error('Inno Setup compiler is missing. Install it with: choco install innosetup -y');
+  throw new Error('Inno Setup compiler is missing. Install it with: winget install JRSoftware.InnoSetup -e or choco install innosetup -y. For a custom install, set ISCC to the full ISCC.exe path.');
 }
 
 function issQuote(value) {

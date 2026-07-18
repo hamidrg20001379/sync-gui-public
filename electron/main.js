@@ -46,8 +46,8 @@ let mainWindow;
 
 nextApp.prepare().then(() => {
   const server = require('http').createServer(handle);
-  server.listen(0, () => {
-    const port = server.address().port;
+  server.listen(3000, '0.0.0.0', () => {
+    const port = 3000;
     mainWindow = new BrowserWindow({
       width: 1280,
       height: 860,

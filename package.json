@@ -14,6 +14,7 @@
     "electron": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "electron:dev": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "dist": "npm run build && node scripts/package.js",
+    "windows:installer": "npm run installer:win",
     "installer:win": "node scripts/package-win-installer.js",
     "installer:mac": "node scripts/package-mac-dmg.js",
     "installer:linux": "node scripts/package-linux-appimage.js"
