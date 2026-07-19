@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const blankProject = { id: '', label: '', root: '', remotes: [] };
+const blankProject = { id: '', label: '', root: '', remotes: [], streams: [] };
 const blankRemote = {
   id: '',
   label: '',
@@ -19,13 +19,14 @@ const blankRemote = {
   categories: []
 };
 const blankCategory = { id: '', label: '', categories: [], mappings: [] };
-const blankMapping = { id: '', label: '', type: 'dir', local: '', remote: '' };
+const blankMapping = { id: '', label: '', type: 'dir', local: '', remote: '', remoteId: '' };
 
 export default function Page() {
   const [config, setConfig] = useState({ projects: [], remotes: [] });
   const [paths, setPaths] = useState({});
   const [projectId, setProjectId] = useState('');
   const [remoteId, setRemoteId] = useState('');
+  const [streamId, setStreamId] = useState('');
   const [modal, setModal] = useState(null);
   const [output, setOutput] = useState('');
   const [status, setStatus] = useState('Ready');
@@ -60,12 +61,16 @@ export default function Page() {
     () => projectRemotes.find((item) => item.id === remoteId),
     [projectRemotes, remoteId]
   );
+  const stream = useMemo(
+    () => (project?.streams || []).find((item) => item.id === streamId),
+    [project, streamId]
+  );
   const liveTargets = useMemo(() => collectCategoryTargets(config), [config]);
   const activeLiveTargets = useMemo(
     () => liveTargets.filter((target) => liveCategoryIds.includes(target.id)),
     [liveTargets, liveCategoryIds]
   );
-  const view = remote ? 'categories' : project ? 'remotes' : 'projects';
+  const view = stream ? 'streamCategories' : remote ? 'categories' : project ? 'remotes' : 'projects';
 
   useEffect(() => {
     if (!liveCategoryIds.length) return;
@@ -105,6 +110,7 @@ export default function Page() {
     setPaths(data.paths || {});
     setProjectId(data.config.ui?.projectId || '');
     setRemoteId(data.config.ui?.remoteId || '');
+    setStreamId(data.config.ui?.streamId || '');
     setCategoryPath(data.config.ui?.categoryPath || []);
     setModal(null);
     setDirty(false);
@@ -113,7 +119,7 @@ export default function Page() {
 
   async function saveConfig(nextConfig = config) {
     setStatus('Saving');
-    const toSave = { ...nextConfig, ui: { ...(nextConfig.ui || {}), projectId, remoteId, categoryPath } };
+    const toSave = { ...nextConfig, ui: { ...(nextConfig.ui || {}), projectId, remoteId, streamId, categoryPath } };
     const response = await fetch('/api/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -259,6 +265,52 @@ export default function Page() {
     });
   }
 
+  function openStream(item = null) {
+    if (!project) return;
+    setModal({
+      kind: 'stream',
+      title: item ? 'Edit stream' : 'Add stream',
+      projectId: project.id,
+      originalId: item?.id || '',
+      value: item ? pickStream(item) : { id: uniqueId(project.streams || [], 'stream'), label: 'New stream', categories: [] }
+    });
+  }
+
+  function openStreamCategory(item = null) {
+    if (!project || !stream) return;
+    setModal({
+      kind: 'streamCategory',
+      title: item ? 'Edit category' : 'Add category',
+      projectId: project.id,
+      streamId: stream.id,
+      originalId: item?.id || '',
+      value: item ? pickCategory(item) : { ...blankCategory, id: uniqueId(stream.categories || [], 'category'), label: 'New category' }
+    });
+  }
+
+  function openStreamMapping(category, mapping = null, type = null) {
+    if (!project || !stream) return;
+    const defaultRemoteId = mapping?.remoteId || projectRemotes[0]?.id || '';
+    const base = mapping
+      ? { ...mapping, remoteId: defaultRemoteId }
+      : { ...blankMapping, id: uniqueId(category.mappings, 'mapping'), label: 'New mapping', remoteId: defaultRemoteId };
+    const value = type && !mapping ? { ...base, type } : base;
+    const isNewCategory = !(stream.categories || []).find((c) => c.id === category.id);
+    setModal({
+      kind: 'streamMapping',
+      title: mapping ? 'Edit file/folder' : type === 'file' ? 'Add file mapping' : type === 'dir' ? 'Add folder mapping' : 'Add file/folder',
+      projectId: project.id,
+      streamId: stream.id,
+      categoryId: category.id,
+      originalId: mapping?.id || '',
+      newCategory: isNewCategory ? category : undefined,
+      projectRemoteIds: projectRemotes.map((item) => item.id),
+      projectRemoteOptions: projectRemotes.map((item) => ({ id: item.id, label: item.label || item.id })),
+      remoteKinds: Object.fromEntries(projectRemotes.map((item) => [item.id, getRemoteKind(item)])),
+      value
+    });
+  }
+
   function openMapping(category, mapping = null, type = null) {
     if (!project || !remote) return;
     const base = mapping ? { ...mapping } : { ...blankMapping, id: uniqueId(category.mappings, 'mapping'), label: 'New mapping' };
@@ -294,7 +346,7 @@ export default function Page() {
           const item = next.projects.find((entry) => entry.id === modal.originalId);
           Object.assign(item, value);
         } else {
-          next.projects.push({ ...value, remotes: [] });
+          next.projects.push({ ...value, remotes: [], streams: [] });
         }
         setProjectId(value.id);
         return;
@@ -321,6 +373,19 @@ export default function Page() {
       }
 
       const nextProject = next.projects.find((entry) => entry.id === modal.projectId);
+      if (modal.kind === 'stream') {
+        if (!Array.isArray(nextProject.streams)) nextProject.streams = [];
+        if (modal.originalId) {
+          const item = nextProject.streams.find((entry) => entry.id === modal.originalId);
+          Object.assign(item, value, { categories: item.categories || [] });
+          if (modal.originalId !== value.id && streamId === modal.originalId) setStreamId(value.id);
+        } else {
+          nextProject.streams.push({ ...value, categories: [] });
+          setStreamId(value.id);
+        }
+        return;
+      }
+
       if (modal.kind === 'projectRemote') {
         if (modal.originalId) {
           const item = nextProject.remotes.find((entry) => entry.id === modal.originalId);
@@ -350,6 +415,7 @@ export default function Page() {
       }
 
       const nextRemote = nextProject.remotes.find((entry) => entry.id === modal.remoteId);
+      const nextStream = (nextProject.streams || []).find((entry) => entry.id === modal.streamId);
       if (modal.kind === 'category') {
         if (modal.originalId) {
           const item = nextRemote.categories.find((entry) => entry.id === modal.originalId);
@@ -360,11 +426,35 @@ export default function Page() {
         return;
       }
 
+      if (modal.kind === 'streamCategory') {
+        if (modal.originalId) {
+          const item = nextStream.categories.find((entry) => entry.id === modal.originalId);
+          Object.assign(item, value);
+        } else {
+          nextStream.categories.push({ ...value, mappings: [] });
+        }
+        return;
+      }
+
       if (modal.kind === 'mapping') {
         let category = nextRemote.categories.find((entry) => entry.id === modal.categoryId);
         if (!category && modal.newCategory) {
           category = { ...modal.newCategory, mappings: [] };
           nextRemote.categories.push(category);
+        }
+        if (modal.originalId) {
+          const item = category.mappings.find((entry) => entry.id === modal.originalId);
+          Object.assign(item, value);
+        } else {
+          category.mappings.push(value);
+        }
+      }
+
+      if (modal.kind === 'streamMapping') {
+        let category = nextStream.categories.find((entry) => entry.id === modal.categoryId);
+        if (!category && modal.newCategory) {
+          category = { ...modal.newCategory, mappings: [] };
+          nextStream.categories.push(category);
         }
         if (modal.originalId) {
           const item = category.mappings.find((entry) => entry.id === modal.originalId);
@@ -384,6 +474,7 @@ export default function Page() {
     });
     setProjectId('');
     setRemoteId('');
+    setStreamId('');
   }
 
   function deleteRemote(item) {
@@ -410,6 +501,16 @@ export default function Page() {
     }
   }
 
+  function deleteStream(item) {
+    if (!project || !confirm(`Delete stream "${item.label || item.id}"?`)) return;
+    mutate((next) => {
+      const nextProject = next.projects.find((entry) => entry.id === project.id);
+      nextProject.streams = (nextProject.streams || []).filter((entry) => entry.id !== item.id);
+    });
+    setStreamId('');
+    setCategoryPath([]);
+  }
+
   function deleteCategory(item) {
     if (!project || !remote || !confirm(`Delete category "${item.label || item.id}"?`)) return;
     mutate((next) => {
@@ -425,6 +526,25 @@ export default function Page() {
     if (!project || !remote || !confirm(`Delete mapping "${mapping.label || mapping.id}"?`)) return;
     mutate((next) => {
       const nextCategory = getCategory(next, project.id, remote.id, category.id);
+      nextCategory.mappings = nextCategory.mappings.filter((entry) => entry.id !== mapping.id);
+    });
+  }
+
+  function deleteStreamCategory(item) {
+    if (!project || !stream || !confirm(`Delete category "${item.label || item.id}"?`)) return;
+    mutate((next) => {
+      const nextStream = getStream(next, project.id, stream.id);
+      nextStream.categories = nextStream.categories.filter((entry) => entry.id !== item.id);
+    });
+    if (categoryPath.includes(item.id)) {
+      setCategoryPath(categoryPath.slice(0, categoryPath.indexOf(item.id)));
+    }
+  }
+
+  function deleteStreamMapping(category, mapping) {
+    if (!project || !stream || !confirm(`Delete mapping "${mapping.label || mapping.id}"?`)) return;
+    mutate((next) => {
+      const nextCategory = getStreamCategory(next, project.id, stream.id, category.id);
       nextCategory.mappings = nextCategory.mappings.filter((entry) => entry.id !== mapping.id);
     });
   }
@@ -453,14 +573,33 @@ export default function Page() {
         <div>
           <h1>Sync Control</h1>
           <nav className="crumbs">
-            <button onClick={() => { setProjectId(''); setRemoteId(''); setCategoryPath([]); }}>Projects</button>
-            {project && <button onClick={() => { setRemoteId(''); setCategoryPath([]); }}>{project.label || project.id}</button>}
+            <button onClick={() => { setProjectId(''); setRemoteId(''); setStreamId(''); setCategoryPath([]); }}>Projects</button>
+            {project && <button onClick={() => { setRemoteId(''); setStreamId(''); setCategoryPath([]); }}>{project.label || project.id}</button>}
             {remote && categoryPath.length === 0 && <span>{remote.label || remote.id}</span>}
+            {stream && categoryPath.length === 0 && <span>{stream.label || stream.id}</span>}
             {remote && categoryPath.length > 0 && (
               <>
                 <button onClick={() => setCategoryPath([])}>{remote.label || remote.id}</button>
                 {(() => {
                   const { ancestors } = resolveCategoryPath(remote.categories, categoryPath);
+                  return ancestors.map((cat, i) => {
+                    const isLast = i === ancestors.length - 1;
+                    return isLast ? (
+                      <span key={cat.id}>{cat.label || cat.id}</span>
+                    ) : (
+                      <button key={cat.id} onClick={() => setCategoryPath(categoryPath.slice(0, i + 1))}>
+                        {cat.label || cat.id}
+                      </button>
+                    );
+                  });
+                })()}
+              </>
+            )}
+            {stream && categoryPath.length > 0 && (
+              <>
+                <button onClick={() => setCategoryPath([])}>{stream.label || stream.id}</button>
+                {(() => {
+                  const { ancestors } = resolveCategoryPath(stream.categories || [], categoryPath);
                   return ancestors.map((cat, i) => {
                     const isLast = i === ancestors.length - 1;
                     return isLast ? (
@@ -525,20 +664,37 @@ export default function Page() {
       )}
 
       {view === 'remotes' && project && (
-        <CardStage title={`${project.label || project.id} remotes`}>
-          {projectRemotes.map((item) => (
-            <RemoteCard
-              key={item.id}
-              remote={item}
-              onOpen={() => setRemoteId(item.id)}
-              onEdit={() => openProjectRemote(item)}
-              onDelete={() => deleteRemote(item)}
-              onUp={() => runKeys(remoteKeys(project, item), 'up')}
-              onDown={() => runKeys(remoteKeys(project, item), 'down')}
-            />
-          ))}
-          <AddCard label="Add remote" onClick={() => openProjectRemote()} />
-        </CardStage>
+        <>
+          <CardStage title={`${project.label || project.id} remotes`}>
+            {projectRemotes.map((item) => (
+              <RemoteCard
+                key={item.id}
+                remote={item}
+                onOpen={() => { setStreamId(''); setRemoteId(item.id); }}
+                onEdit={() => openProjectRemote(item)}
+                onDelete={() => deleteRemote(item)}
+                onUp={() => runKeys(remoteKeys(project, item), 'up')}
+                onDown={() => runKeys(remoteKeys(project, item), 'down')}
+              />
+            ))}
+            <AddCard label="Add remote" onClick={() => openProjectRemote()} />
+          </CardStage>
+
+          <CardStage title="Project streams">
+            {(project.streams || []).map((item) => (
+              <StreamCard
+                key={item.id}
+                stream={item}
+                onOpen={() => { setRemoteId(''); setStreamId(item.id); }}
+                onEdit={() => openStream(item)}
+                onDelete={() => deleteStream(item)}
+                onUp={() => runKeys(streamKeys(project, projectRemotes, item), 'up')}
+                onDown={() => runKeys(streamKeys(project, projectRemotes, item), 'down')}
+              />
+            ))}
+            <AddCard label="Add stream" onClick={() => openStream()} />
+          </CardStage>
+        </>
       )}
 
       {view === 'categories' && project && remote && (() => {
@@ -619,6 +775,81 @@ export default function Page() {
         );
       })()}
 
+      {view === 'streamCategories' && project && stream && (() => {
+        const { current: currentCategory } = resolveCategoryPath(stream.categories || [], categoryPath);
+        const displayCategories = currentCategory ? (currentCategory.categories || []) : (stream.categories || []);
+        const categoryPathPrefix = categoryPath;
+
+        return (
+          <CardStage
+            title={currentCategory ? (currentCategory.label || currentCategory.id) : `${stream.label || stream.id} stream`}
+          >
+            {currentCategory && currentCategory.mappings.map((mapping) => (
+              <MappingCard
+                key={mapping.id}
+                mapping={mapping}
+                category={currentCategory}
+                categoryPathPrefix={categoryPathPrefix}
+                project={project}
+                remote={projectRemotes.find((item) => item.id === mapping.remoteId)}
+                onEdit={() => openStreamMapping(currentCategory, mapping)}
+                onDelete={() => deleteStreamMapping(currentCategory, mapping)}
+                onUp={() => runKeys([streamMappingKey(project, stream, categoryPathPrefix, mapping)], 'up')}
+                onDown={() => runKeys([streamMappingKey(project, stream, categoryPathPrefix, mapping)], 'down')}
+              />
+            ))}
+            {displayCategories.map((category) => {
+              const nextCategoryPath = [...categoryPathPrefix, category.id];
+              const liveId = streamCategoryLiveKey(project, stream, nextCategoryPath);
+              const isLive = liveCategoryIds.includes(liveId);
+              return (
+                <CategoryCard
+                  key={category.id}
+                  project={project}
+                  remote={projectRemotes.find((item) => item.id === category.mappings[0]?.remoteId) || projectRemotes[0]}
+                  category={category}
+                  isLive={isLive}
+                  onOpen={() => setCategoryPath(nextCategoryPath)}
+                  onEdit={() => openStreamCategory(category)}
+                  onDelete={() => deleteStreamCategory(category)}
+                  onAddFileMapping={() => openStreamMapping(category, null, 'file')}
+                  onAddFolderMapping={() => openStreamMapping(category, null, 'dir')}
+                  onEditMapping={(mapping) => openStreamMapping(category, mapping)}
+                  onDeleteMapping={(mapping) => deleteStreamMapping(category, mapping)}
+                  onUp={() => runKeys(streamCategoryKeys(project, stream, category, nextCategoryPath), 'up')}
+                  onDown={() => runKeys(streamCategoryKeys(project, stream, category, nextCategoryPath), 'down')}
+                  onToggleLive={() => toggleLiveCategory(liveId)}
+                  onMappingUp={(mapping) => runKeys([streamMappingKey(project, stream, nextCategoryPath, mapping)], 'up')}
+                  onMappingDown={(mapping) => runKeys([streamMappingKey(project, stream, nextCategoryPath, mapping)], 'down')}
+                  dragCategoryId={dragCategoryId}
+                  onDragStart={() => setDragCategoryId(category.id)}
+                  onDragEnd={() => setDragCategoryId('')}
+                  onDropCategory={() => setOutput('Moving stream categories is only supported at the current level for now.')}
+                />
+              );
+            })}
+            <AddCard
+              label="Add category"
+              onClick={() => openStreamCategory()}
+            />
+            <button className="card add-card add-mapping-card" onClick={() => {
+              const cat = currentCategory || { ...blankCategory, id: uniqueId(stream.categories || [], 'category'), label: 'New category', mappings: [] };
+              openStreamMapping(cat, null, 'file');
+            }}>
+              <span>+</span>
+              <strong>Add file mapping</strong>
+            </button>
+            <button className="card add-card add-mapping-card" onClick={() => {
+              const cat = currentCategory || { ...blankCategory, id: uniqueId(stream.categories || [], 'category'), label: 'New category', mappings: [] };
+              openStreamMapping(cat, null, 'dir');
+            }}>
+              <span>+</span>
+              <strong>Add folder mapping</strong>
+            </button>
+          </CardStage>
+        );
+      })()}
+
       {(view !== 'projects' || output) && (
         <section className="console-panel">
           <pre>{output || 'Output will appear here.'}</pre>
@@ -687,8 +918,28 @@ function RemoteCard({ remote, onOpen, onEdit, onDelete, onUp, onDown }) {
   );
 }
 
+function StreamCard({ stream, onOpen, onEdit, onDelete, onUp, onDown }) {
+  const categoryCount = (stream.categories || []).length;
+  const mappingCount = collectCategoryMappings(stream.categories || []).length;
+  return (
+    <article className="card remote-card" onClick={onOpen}>
+      <div className="card-main">
+        <h3>{stream.label || stream.id}</h3>
+        <p>Project stream</p>
+      </div>
+      <div className="stats">
+        <span>{categoryCount} categories</span>
+        <span>{mappingCount} mappings</span>
+      </div>
+      <SyncTools onUp={onUp} onDown={onDown} />
+      <CardTools onEdit={onEdit} onDelete={onDelete} />
+    </article>
+  );
+}
+
 function MappingCard({ mapping, category, categoryPathPrefix, project, remote, onEdit, onDelete, onUp, onDown }) {
   const isFile = mapping.type === 'file';
+  const remoteLabel = mapping.remoteId ? `${remote?.label || mapping.remoteId}: ` : '';
   return (
     <article className={`card mapping-card ${isFile ? 'mapping-file' : 'mapping-folder'}`}>
       <div className="mapping-card-head">
@@ -697,7 +948,7 @@ function MappingCard({ mapping, category, categoryPathPrefix, project, remote, o
         <small className="mapping-paths" title={`${mapping.local} -> ${mapping.remote}`}>
           <span className="path-local">{mapping.local}</span>
           <span className="path-arrow">{'\u2192'}</span>
-          <span className="path-remote">{mapping.remote}</span>
+          <span className="path-remote">{remoteLabel}{mapping.remote}</span>
         </small>
       </div>
       <SyncTools onUp={onUp} onDown={onDown} />
@@ -786,7 +1037,7 @@ function CategoryCard({
             }}>
               <strong>{mapping.label || mapping.id}</strong>
               <span>{mapping.type}</span>
-              <small title={`${mapping.local} -> ${mapping.remote}`}>{mapping.local}{' -> '}{mapping.remote}</small>
+              <small title={`${mapping.local} -> ${mapping.remote}`}>{mapping.local}{' -> '}{mapping.remoteId ? `${mapping.remoteId}:` : ''}{mapping.remote}</small>
             </button>
             <button className="btn-up" title="Sync up" onClick={() => onMappingUp(mapping)}>↑</button>
             <button className="btn-down" title="Sync down" onClick={() => onMappingDown(mapping)}>↓</button>
@@ -1016,9 +1267,22 @@ function EditorModal({ modal, setModal, onApply, projectRoot, globalRemotes }) {
               )}
             </>
           )}
-          {modal.kind === 'category' && null}
-          {modal.kind === 'mapping' && (
+          {(modal.kind === 'category' || modal.kind === 'streamCategory') && null}
+          {(modal.kind === 'mapping' || modal.kind === 'streamMapping') && (
             <>
+              {modal.kind === 'streamMapping' && (
+                <label>
+                  Remote
+                  <select value={value.remoteId || ''} onChange={(event) => update('remoteId', event.target.value)}>
+                    <option value="" disabled>Select remote</option>
+                    {(modal.projectRemoteOptions || []).map((remote) => (
+                        <option value={remote.id} key={remote.id}>
+                          {remote.label || remote.id}
+                        </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="field-with-button">
                 Local path
                 <div className="field-row">
@@ -1035,7 +1299,7 @@ function EditorModal({ modal, setModal, onApply, projectRoot, globalRemotes }) {
                 </div>
               </label>
               <Field
-                label={modal.remoteKind === 'ssh' ? 'Remote path' : 'Remote path under root'}
+                label={(modal.remoteKinds?.[value.remoteId] || modal.remoteKind || 'ssh') === 'ssh' ? 'Remote path' : 'Remote path under root'}
                 value={value.remote}
                 onChange={(next) => update('remote', next)}
               />
@@ -1061,7 +1325,7 @@ function Field({ label, value, onChange, type = 'text' }) {
 }
 
 function pickProject(project) {
-  return { id: project.id, label: project.label || '', root: project.root, remotes: project.remotes };
+  return { id: project.id, label: project.label || '', root: project.root, remotes: project.remotes, streams: project.streams || [] };
 }
 
 function pickRemote(remote) {
@@ -1098,6 +1362,14 @@ function pickCategory(category) {
   };
 }
 
+function pickStream(stream) {
+  return {
+    id: stream.id,
+    label: stream.label || '',
+    categories: stream.categories || []
+  };
+}
+
 function cleanValue(value) {
   const next = { ...value };
   for (const key of Object.keys(next)) {
@@ -1118,11 +1390,16 @@ function validateModalValue(kind, value, modal = {}) {
     if (!value.remoteId) throw new Error('Remote is required.');
     if (modal.globalRemoteIds && !modal.globalRemoteIds.includes(value.remoteId)) throw new Error('Remote does not exist.');
   }
-  if (kind === 'mapping') {
+  if (kind === 'mapping' || kind === 'streamMapping') {
+    if (kind === 'streamMapping') {
+      if (!value.remoteId) throw new Error('Remote is required.');
+      if (modal.projectRemoteIds && !modal.projectRemoteIds.includes(value.remoteId)) throw new Error('Remote does not belong to this project.');
+    }
     if (value.type !== 'file' && value.type !== 'dir') throw new Error('Mapping type must be file or folder.');
     if (!value.local) throw new Error('Local path is required.');
     if (!value.remote) throw new Error('Remote path is required.');
-    if ((modal.remoteKind || 'ssh') === 'ssh' && !value.remote.startsWith('/')) throw new Error('Remote path must start with /.');
+    const remoteKind = modal.remoteKinds?.[value.remoteId] || modal.remoteKind || 'ssh';
+    if (remoteKind === 'ssh' && !value.remote.startsWith('/')) throw new Error('Remote path must start with /.');
   }
 }
 
@@ -1132,6 +1409,14 @@ function getRemote(config, projectId, remoteId) {
 
 function getCategory(config, projectId, remoteId, categoryId) {
   return getRemote(config, projectId, remoteId).categories.find((item) => item.id === categoryId);
+}
+
+function getStream(config, projectId, streamId) {
+  return (config.projects.find((item) => item.id === projectId).streams || []).find((item) => item.id === streamId);
+}
+
+function getStreamCategory(config, projectId, streamId, categoryId) {
+  return getStream(config, projectId, streamId).categories.find((item) => item.id === categoryId);
 }
 
 function uniqueId(items, base) {
@@ -1157,15 +1442,39 @@ function mappingKey(project, remote, categoryPath, mapping) {
   return `${project.id}/${remote.id}/${categoryPath.join('/')}/${mapping.id}`;
 }
 
+function streamKeys(project, projectRemotes, stream) {
+  return (stream.categories || []).flatMap((category) => streamCategoryKeys(project, stream, category, [category.id]));
+}
+
+function streamCategoryKeys(project, stream, category, path = [category.id]) {
+  return [
+    ...category.mappings.map((mapping) => streamMappingKey(project, stream, path, mapping)),
+    ...category.categories.flatMap((child) => streamCategoryKeys(project, stream, child, [...path, child.id]))
+  ];
+}
+
+function streamMappingKey(project, stream, categoryPath, mapping) {
+  return `${project.id}/streams/${stream.id}/${categoryPath.join('/')}/${mapping.id}`;
+}
+
 function categoryLiveKey(project, remote, categoryPath) {
   return `${project.id}/${remote.id}/${categoryPath.join('/')}`;
 }
 
+function streamCategoryLiveKey(project, stream, categoryPath) {
+  return `${project.id}/streams/${stream.id}/${categoryPath.join('/')}`;
+}
+
 function collectCategoryTargets(config) {
   return config.projects.flatMap((project) => (
-    getProjectRemotes(config, project).flatMap((remote) => (
-      remote.categories.flatMap((category) => collectRemoteCategoryTargets(project, remote, category))
-    ))
+    [
+      ...getProjectRemotes(config, project).flatMap((remote) => (
+        remote.categories.flatMap((category) => collectRemoteCategoryTargets(project, remote, category))
+      )),
+      ...(project.streams || []).flatMap((stream) => (
+        (stream.categories || []).flatMap((category) => collectStreamCategoryTargets(project, stream, category))
+      ))
+    ]
   ));
 }
 
@@ -1178,6 +1487,24 @@ function collectRemoteCategoryTargets(project, remote, category, path = [categor
     },
     ...category.categories.flatMap((child) => collectRemoteCategoryTargets(project, remote, child, [...path, child.id]))
   ];
+}
+
+function collectStreamCategoryTargets(project, stream, category, path = [category.id]) {
+  return [
+    {
+      id: streamCategoryLiveKey(project, stream, path),
+      label: `${project.label || project.id}/${stream.label || stream.id}/${path.join('/')}`,
+      keys: streamCategoryKeys(project, stream, category, path)
+    },
+    ...category.categories.flatMap((child) => collectStreamCategoryTargets(project, stream, child, [...path, child.id]))
+  ];
+}
+
+function collectCategoryMappings(categories) {
+  return categories.flatMap((category) => [
+    ...(category.mappings || []),
+    ...collectCategoryMappings(category.categories || [])
+  ]);
 }
 
 function getRemoteKind(remote) {
