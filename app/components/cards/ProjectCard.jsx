@@ -9,7 +9,6 @@ export function ProjectCard({ project, remotes, onOpen, onEdit, onDelete }) {
     <article className="card project-card" onClick={onOpen}>
       <div className="card-main">
         <h3>{project.label || project.id}</h3>
-        <p>{project.root}</p>
         {streams.length > 0 && <small className="project-streams" title={streamNames}>Streams: {streamNames}</small>}
       </div>
       <div className="stats">

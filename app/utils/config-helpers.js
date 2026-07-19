@@ -10,9 +10,8 @@ export function remoteSummary(remote) {
   return remote.root || 'Local folder';
 }
 
-export function getProjectRemotes(config, project) {
-  const projectRemotes = (project.streams?.length ? project.streams : project.remotes) || [];
-  return projectRemotes.map((projectRemote) => {
+function resolveLinkedRemotes(config, project, items) {
+  return (items || []).map((projectRemote) => {
     const globalRemote = (config.remotes || []).find((item) => item.id === (projectRemote.remoteId || projectRemote.id)) || {};
     return {
       ...globalRemote,
@@ -22,6 +21,19 @@ export function getProjectRemotes(config, project) {
       categories: projectRemote.categories || []
     };
   });
+}
+
+export function getProjectRemotes(config, project) {
+  const projectRemotes = (project.streams?.length ? project.streams : project.remotes) || [];
+  return resolveLinkedRemotes(config, project, projectRemotes);
+}
+
+export function getProjectRemotesList(config, project) {
+  return resolveLinkedRemotes(config, project, project.remotes);
+}
+
+export function getProjectStreamsList(config, project) {
+  return resolveLinkedRemotes(config, project, project.streams);
 }
 
 export function uniqueId(items, base) {
