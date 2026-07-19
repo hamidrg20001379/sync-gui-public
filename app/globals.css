@@ -367,6 +367,16 @@ label {
   display: none;
 }
 
+.project-streams {
+  width: min(100%, 240px);
+  overflow: hidden;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .card-main {
   display: grid;
   gap: 6px;
