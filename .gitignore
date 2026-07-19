@@ -6,3 +6,5 @@ dev.log
 .electron-cache/
 .env
 sync-projects.json
+pyproject.toml
+.idea

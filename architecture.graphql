@@ -1,0 +1,34 @@
+type Project {
+  remotes:[Remote!]
+  streams:[Stream!]
+}
+
+type Stream {
+  categories: [StreamCategory!]
+  mappings: [StreamMapping!]
+}
+
+type StreamCategory {
+  categories: [StreamCategory!]
+  mappings: [StreamMapping!]
+}
+
+type StreamMapping {
+  local: String
+  remotePaths: [String!]
+}
+
+type Remote {
+  categories: [Category!]
+  mappings: [Mapping!]
+}
+
+type Category{
+  categories:[Category!]
+  mappings:[Mapping!]
+}
+
+type Mapping {
+  local:String
+  remotePath:String
+}
