@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { blankProject, blankStream, blankRemote, blankCategory, blankMapping } from './utils/constants';
-import { getRemoteKind, getProjectRemotes, getRemote, getCategory, uniqueId, resolveCategoryPath } from './utils/config-helpers';
+import { getRemoteKind, getProjectRemotes, getProjectRemotesList, getProjectStreamsList, getRemote, getCategory, uniqueId, resolveCategoryPath } from './utils/config-helpers';
 import { remoteKeys, categoryKeys, mappingKey, categoryLiveKey, collectCategoryTargets } from './utils/sync-helpers';
 import { cleanValue, validateModalValue } from './utils/validation';
 import { pickProject, pickRemote, pickProjectStream, pickCategory, renameCategoryTargets, removeCategoryTargets } from './utils/entity-pickers';
@@ -47,6 +47,14 @@ export default function Page() {
   );
   const projectRemotes = useMemo(
     () => (project ? getProjectRemotes(config, project) : []),
+    [config, project]
+  );
+  const projectRemotesList = useMemo(
+    () => (project ? getProjectRemotesList(config, project) : []),
+    [config, project]
+  );
+  const projectStreamsList = useMemo(
+    () => (project ? getProjectStreamsList(config, project) : []),
     [config, project]
   );
   const remote = useMemo(
@@ -506,20 +514,37 @@ export default function Page() {
       )}
 
       {view === 'remotes' && project && (
-        <CardStage title={`${project.label || project.id} streams`}>
-          {projectRemotes.map((item) => (
-            <RemoteCard
-              key={item.id}
-              remote={item}
-              onOpen={() => setRemoteId(item.id)}
-              onEdit={() => openProjectStream(item)}
-              onDelete={() => deleteStream(item)}
-              onUp={() => runKeys(remoteKeys(project, item), 'up')}
-              onDown={() => runKeys(remoteKeys(project, item), 'down')}
-            />
-          ))}
-          <AddCard label="Add stream" onClick={() => openProjectStream()} />
-        </CardStage>
+        <>
+          <CardStage title={`${project.label || project.id} remotes`}>
+            {projectRemotesList.map((item) => (
+              <RemoteCard
+                key={item.id}
+                remote={item}
+                onOpen={() => setRemoteId(item.id)}
+                onEdit={() => openProjectStream(item)}
+                onDelete={() => deleteStream(item)}
+                onUp={() => runKeys(remoteKeys(project, item), 'up')}
+                onDown={() => runKeys(remoteKeys(project, item), 'down')}
+              />
+            ))}
+            <AddCard label="Add remote" onClick={() => openProjectStream()} />
+          </CardStage>
+
+          <CardStage title={`${project.label || project.id} streams`}>
+            {projectStreamsList.map((item) => (
+              <RemoteCard
+                key={item.id}
+                remote={item}
+                onOpen={() => setRemoteId(item.id)}
+                onEdit={() => openProjectStream(item)}
+                onDelete={() => deleteStream(item)}
+                onUp={() => runKeys(remoteKeys(project, item), 'up')}
+                onDown={() => runKeys(remoteKeys(project, item), 'down')}
+              />
+            ))}
+            <AddCard label="Add stream" onClick={() => openProjectStream()} />
+          </CardStage>
+        </>
       )}
 
       {view === 'categories' && project && remote && (() => {
