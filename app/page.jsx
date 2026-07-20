@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const blankProject = { id: '', label: '', root: '', remotes: [], streams: [] };
+const blankProject = { id: '', label: '', root: '', remotes: [], streams: [], syncTargets: [] };
 const blankRemote = {
   id: '',
   label: '',
@@ -36,11 +36,19 @@ export default function Page() {
   const [dragCategoryId, setDragCategoryId] = useState('');
   const [categoryPath, setCategoryPath] = useState([]);
   const [liveCategoryIds, setLiveCategoryIds] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [historyMinimized, setHistoryMinimized] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const liveRunningRef = useRef(new Set());
 
   useEffect(() => {
     loadConfig();
+    loadHistory();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = setInterval(loadHistory, 2000);
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -70,7 +78,14 @@ export default function Page() {
     () => liveTargets.filter((target) => liveCategoryIds.includes(target.id)),
     [liveTargets, liveCategoryIds]
   );
+  const selectedSyncTargets = useMemo(() => new Set(project?.syncTargets || []), [project]);
   const view = stream ? 'streamCategories' : remote ? 'categories' : project ? 'remotes' : 'projects';
+
+  useEffect(() => {
+    if (history.some((job) => job.status === 'running')) setStatus(liveCategoryIds.length ? 'Live' : 'Running');
+    else if (history[0]?.status === 'succeeded' && (status === 'Running' || status === 'Live')) setStatus(liveCategoryIds.length ? 'Live' : 'Done');
+    else if (history[0]?.status === 'failed' && (status === 'Running' || status === 'Live')) setStatus('Failed');
+  }, [history, liveCategoryIds.length, status]);
 
   useEffect(() => {
     if (!liveCategoryIds.length) return;
@@ -146,6 +161,12 @@ export default function Page() {
     setDirty(true);
   }
 
+  async function loadHistory() {
+    const response = await fetch('/api/history');
+    const data = await response.json();
+    if (response.ok) setHistory(data.history || []);
+  }
+
   async function runKeys(keys, direction) {
     if (!keys.length) {
       setOutput('No mappings in this box yet.');
@@ -157,11 +178,16 @@ export default function Page() {
     const response = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ direction, dryRun, noDelete, targetIds: keys })
+      body: JSON.stringify({ source: 'ui', direction, dryRun, noDelete, targetIds: keys })
     });
     const data = await response.json();
-    setOutput((old) => `${old}${data.output || data.error || ''}\nExit code: ${data.exitCode ?? 1}`);
-    setStatus((data.exitCode ?? 1) === 0 ? 'Done' : 'Failed');
+    if (!response.ok) {
+      setOutput((old) => `${old}${data.error || 'Failed to start sync'}\nExit code: 1`);
+      setStatus('Failed');
+      return;
+    }
+    setOutput((old) => `${old}Started job ${data.id}.\n`);
+    await loadHistory();
   }
 
   async function runLiveUp(target) {
@@ -170,11 +196,21 @@ export default function Page() {
     const response = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ direction: 'up', dryRun, noDelete, targetIds: target.keys })
+      body: JSON.stringify({ source: 'ui-live', direction: 'up', dryRun, noDelete, targetIds: target.keys })
     });
     const data = await response.json();
-    setOutput((old) => `${old}${data.output || data.error || ''}\nExit code: ${data.exitCode ?? 1}`);
-    setStatus((data.exitCode ?? 1) === 0 ? 'Live' : 'Failed');
+    if (!response.ok) {
+      setOutput((old) => `${old}${data.error || 'Failed to start live sync'}\nExit code: 1`);
+      setStatus('Failed');
+      return;
+    }
+    setOutput((old) => `${old}Started job ${data.id}.\n`);
+    await loadHistory();
+  }
+
+  function showHistoryJob(job) {
+    const command = `> ${job.source} sync --${job.direction}${job.dryRun ? ' --dry-run' : ''}${job.noDelete ? ' --no-delete' : ''} ${job.targetIds.join(' ')}`;
+    setOutput(`${command}\n${job.output || job.error || ''}\nExit code: ${job.exitCode ?? 'running'}`);
   }
 
   async function checkForUpdates(manual = true) {
@@ -208,6 +244,31 @@ export default function Page() {
         ? oldIds.filter((item) => item !== id)
         : [...oldIds, id]
     ));
+  }
+
+  function toggleSyncTargets(keys) {
+    if (!project || !keys.length) return;
+    mutate((next) => {
+      const nextProject = next.projects.find((entry) => entry.id === project.id);
+      const selected = new Set(nextProject.syncTargets || []);
+      const allSelected = keys.every((key) => selected.has(key));
+      for (const key of keys) {
+        if (allSelected) {
+          selected.delete(key);
+        } else {
+          selected.add(key);
+        }
+      }
+      nextProject.syncTargets = [...selected];
+    });
+  }
+
+  function syncCheckProps(keys) {
+    return {
+      selected: keys.length > 0 && keys.every((key) => selectedSyncTargets.has(key)),
+      disabled: keys.length === 0,
+      onToggle: () => toggleSyncTargets(keys)
+    };
   }
 
   function openProject(item = null) {
@@ -346,7 +407,7 @@ export default function Page() {
           const item = next.projects.find((entry) => entry.id === modal.originalId);
           Object.assign(item, value);
         } else {
-          next.projects.push({ ...value, remotes: [], streams: [] });
+          next.projects.push({ ...value, remotes: [], streams: [], syncTargets: [] });
         }
         setProjectId(value.id);
         return;
@@ -632,6 +693,9 @@ export default function Page() {
         </div>
       </header>
 
+      <div className={`workspace ${historyMinimized ? 'history-minimized' : ''}`}>
+        <div className="workspace-main">
+
       {view === 'projects' && (
         <>
           <CardStage title="Projects">
@@ -666,32 +730,40 @@ export default function Page() {
       {view === 'remotes' && project && (
         <>
           <CardStage title={`${project.label || project.id} remotes`}>
-            {projectRemotes.map((item) => (
-              <RemoteCard
-                key={item.id}
-                remote={item}
-                onOpen={() => { setStreamId(''); setRemoteId(item.id); }}
-                onEdit={() => openProjectRemote(item)}
-                onDelete={() => deleteRemote(item)}
-                onUp={() => runKeys(remoteKeys(project, item), 'up')}
-                onDown={() => runKeys(remoteKeys(project, item), 'down')}
-              />
-            ))}
+            {projectRemotes.map((item) => {
+              const keys = remoteKeys(project, item);
+              return (
+                <RemoteCard
+                  key={item.id}
+                  remote={item}
+                  syncCheck={syncCheckProps(keys)}
+                  onOpen={() => { setStreamId(''); setRemoteId(item.id); }}
+                  onEdit={() => openProjectRemote(item)}
+                  onDelete={() => deleteRemote(item)}
+                  onUp={() => runKeys(keys, 'up')}
+                  onDown={() => runKeys(keys, 'down')}
+                />
+              );
+            })}
             <AddCard label="Add remote" onClick={() => openProjectRemote()} />
           </CardStage>
 
           <CardStage title="Project streams">
-            {(project.streams || []).map((item) => (
-              <StreamCard
-                key={item.id}
-                stream={item}
-                onOpen={() => { setRemoteId(''); setStreamId(item.id); }}
-                onEdit={() => openStream(item)}
-                onDelete={() => deleteStream(item)}
-                onUp={() => runKeys(streamKeys(project, projectRemotes, item), 'up')}
-                onDown={() => runKeys(streamKeys(project, projectRemotes, item), 'down')}
-              />
-            ))}
+            {(project.streams || []).map((item) => {
+              const keys = streamKeys(project, projectRemotes, item);
+              return (
+                <StreamCard
+                  key={item.id}
+                  stream={item}
+                  syncCheck={syncCheckProps(keys)}
+                  onOpen={() => { setRemoteId(''); setStreamId(item.id); }}
+                  onEdit={() => openStream(item)}
+                  onDelete={() => deleteStream(item)}
+                  onUp={() => runKeys(keys, 'up')}
+                  onDown={() => runKeys(keys, 'down')}
+                />
+              );
+            })}
             <AddCard label="Add stream" onClick={() => openStream()} />
           </CardStage>
         </>
@@ -707,20 +779,24 @@ export default function Page() {
           <CardStage
             title={currentCategory ? (currentCategory.label || currentCategory.id) : `${remote.label || remote.id} files and folders`}
           >
-            {currentCategory && currentCategory.mappings.map((mapping) => (
-              <MappingCard
-                key={mapping.id}
-                mapping={mapping}
-                category={currentCategory}
-                categoryPathPrefix={categoryPathPrefix}
-                project={project}
-                remote={remote}
-                onEdit={() => openMapping(currentCategory, mapping)}
-                onDelete={() => deleteMapping(currentCategory, mapping)}
-                onUp={() => runKeys([mappingKey(project, remote, categoryPathPrefix, mapping)], 'up')}
-                onDown={() => runKeys([mappingKey(project, remote, categoryPathPrefix, mapping)], 'down')}
-              />
-            ))}
+            {currentCategory && currentCategory.mappings.map((mapping) => {
+              const keys = [mappingKey(project, remote, categoryPathPrefix, mapping)];
+              return (
+                <MappingCard
+                  key={mapping.id}
+                  mapping={mapping}
+                  category={currentCategory}
+                  categoryPathPrefix={categoryPathPrefix}
+                  project={project}
+                  remote={remote}
+                  syncCheck={syncCheckProps(keys)}
+                  onEdit={() => openMapping(currentCategory, mapping)}
+                  onDelete={() => deleteMapping(currentCategory, mapping)}
+                  onUp={() => runKeys(keys, 'up')}
+                  onDown={() => runKeys(keys, 'down')}
+                />
+              );
+            })}
             {displayCategories.map((category) => (
               (() => {
                 const nextCategoryPath = [...categoryPathPrefix, category.id];
@@ -733,6 +809,7 @@ export default function Page() {
                 remote={remote}
                 category={category}
                 isLive={isLive}
+                syncCheck={syncCheckProps(categoryKeys(project, remote, category, nextCategoryPath))}
                 onOpen={() => setCategoryPath(nextCategoryPath)}
                 onEdit={() => openCategory(category)}
                 onDelete={() => deleteCategory(category)}
@@ -784,20 +861,24 @@ export default function Page() {
           <CardStage
             title={currentCategory ? (currentCategory.label || currentCategory.id) : `${stream.label || stream.id} stream`}
           >
-            {currentCategory && currentCategory.mappings.map((mapping) => (
-              <MappingCard
-                key={mapping.id}
-                mapping={mapping}
-                category={currentCategory}
-                categoryPathPrefix={categoryPathPrefix}
-                project={project}
-                remote={projectRemotes.find((item) => item.id === mapping.remoteId)}
-                onEdit={() => openStreamMapping(currentCategory, mapping)}
-                onDelete={() => deleteStreamMapping(currentCategory, mapping)}
-                onUp={() => runKeys([streamMappingKey(project, stream, categoryPathPrefix, mapping)], 'up')}
-                onDown={() => runKeys([streamMappingKey(project, stream, categoryPathPrefix, mapping)], 'down')}
-              />
-            ))}
+            {currentCategory && currentCategory.mappings.map((mapping) => {
+              const keys = [streamMappingKey(project, stream, categoryPathPrefix, mapping)];
+              return (
+                <MappingCard
+                  key={mapping.id}
+                  mapping={mapping}
+                  category={currentCategory}
+                  categoryPathPrefix={categoryPathPrefix}
+                  project={project}
+                  remote={projectRemotes.find((item) => item.id === mapping.remoteId)}
+                  syncCheck={syncCheckProps(keys)}
+                  onEdit={() => openStreamMapping(currentCategory, mapping)}
+                  onDelete={() => deleteStreamMapping(currentCategory, mapping)}
+                  onUp={() => runKeys(keys, 'up')}
+                  onDown={() => runKeys(keys, 'down')}
+                />
+              );
+            })}
             {displayCategories.map((category) => {
               const nextCategoryPath = [...categoryPathPrefix, category.id];
               const liveId = streamCategoryLiveKey(project, stream, nextCategoryPath);
@@ -809,6 +890,7 @@ export default function Page() {
                   remote={projectRemotes.find((item) => item.id === category.mappings[0]?.remoteId) || projectRemotes[0]}
                   category={category}
                   isLive={isLive}
+                  syncCheck={syncCheckProps(streamCategoryKeys(project, stream, category, nextCategoryPath))}
                   onOpen={() => setCategoryPath(nextCategoryPath)}
                   onEdit={() => openStreamCategory(category)}
                   onDelete={() => deleteStreamCategory(category)}
@@ -856,6 +938,16 @@ export default function Page() {
         </section>
       )}
 
+        </div>
+
+        <HistoryBox
+          history={history}
+          minimized={historyMinimized}
+          onOpen={showHistoryJob}
+          onToggleMinimized={() => setHistoryMinimized((value) => !value)}
+        />
+      </div>
+
       {modal && (
         <EditorModal
           modal={modal}
@@ -899,11 +991,12 @@ function ProjectCard({ project, remotes, onOpen, onEdit, onDelete }) {
   );
 }
 
-function RemoteCard({ remote, onOpen, onEdit, onDelete, onUp, onDown }) {
+function RemoteCard({ remote, syncCheck, onOpen, onEdit, onDelete, onUp, onDown }) {
   const categoryCount = remote.categories.length;
   const mappingCount = remote.categories.flatMap((category) => category.mappings).length;
   return (
     <article className="card remote-card" onClick={onOpen}>
+      {syncCheck && <SyncCheck {...syncCheck} />}
       <div className="card-main">
         <h3>{remote.label || remote.id}</h3>
         <p>{remoteSummary(remote)}</p>
@@ -918,11 +1011,12 @@ function RemoteCard({ remote, onOpen, onEdit, onDelete, onUp, onDown }) {
   );
 }
 
-function StreamCard({ stream, onOpen, onEdit, onDelete, onUp, onDown }) {
+function StreamCard({ stream, syncCheck, onOpen, onEdit, onDelete, onUp, onDown }) {
   const categoryCount = (stream.categories || []).length;
   const mappingCount = collectCategoryMappings(stream.categories || []).length;
   return (
     <article className="card remote-card" onClick={onOpen}>
+      {syncCheck && <SyncCheck {...syncCheck} />}
       <div className="card-main">
         <h3>{stream.label || stream.id}</h3>
         <p>Project stream</p>
@@ -937,11 +1031,50 @@ function StreamCard({ stream, onOpen, onEdit, onDelete, onUp, onDown }) {
   );
 }
 
-function MappingCard({ mapping, category, categoryPathPrefix, project, remote, onEdit, onDelete, onUp, onDown }) {
+function HistoryBox({ history, minimized, onOpen, onToggleMinimized }) {
+  const recent = history.slice(0, 6);
+  const running = history.filter((job) => job.status === 'running').length;
+
+  return (
+    <aside className="history-box" aria-label="Sync history">
+      <div className="history-head">
+        {!minimized && <strong>History</strong>}
+        {!minimized && <span>{running ? `${running} running` : `${history.length} actions`}</span>}
+        <button
+          className="history-toggle"
+          title={minimized ? 'Expand history' : 'Minimize history'}
+          onClick={onToggleMinimized}
+        >
+          {minimized ? '<' : '>'}
+        </button>
+      </div>
+      {minimized ? (
+        <button className="history-rail" title="Expand history" onClick={onToggleMinimized}>
+          <span>{running || history.length}</span>
+          <strong>{running ? 'RUN' : 'LOG'}</strong>
+        </button>
+      ) : (
+        <div className="history-list">
+          {recent.length === 0 && <p>No syncs yet.</p>}
+          {recent.map((job) => (
+            <button key={job.id} className={`history-item ${job.status}`} onClick={() => onOpen(job)}>
+              <span className="history-status">{job.status}</span>
+              <span className="history-title">{job.direction} - {job.targetIds.length} target{job.targetIds.length === 1 ? '' : 's'}</span>
+              <time>{formatTime(job.finishedAt || job.startedAt)}</time>
+            </button>
+          ))}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function MappingCard({ mapping, category, categoryPathPrefix, project, remote, syncCheck, onEdit, onDelete, onUp, onDown }) {
   const isFile = mapping.type === 'file';
   const remoteLabel = mapping.remoteId ? `${remote?.label || mapping.remoteId}: ` : '';
   return (
     <article className={`card mapping-card ${isFile ? 'mapping-file' : 'mapping-folder'}`}>
+      {syncCheck && <SyncCheck {...syncCheck} />}
       <div className="mapping-card-head">
         <span className={`mapping-type-badge ${isFile ? 'badge-file' : 'badge-folder'}`}>{isFile ? 'FILE' : 'FOLDER'}</span>
         <h3>{mapping.label || mapping.id}</h3>
@@ -962,6 +1095,7 @@ function CategoryCard({
   remote,
   category,
   isLive,
+  syncCheck,
   onOpen,
   onEdit,
   onDelete,
@@ -1008,6 +1142,7 @@ function CategoryCard({
         onDropCategory(sourceId);
       }}
     >
+      {syncCheck && <SyncCheck {...syncCheck} />}
       <div className="category-head">
         <div>
           <span className="mapping-type-badge badge-category">CATEGORY</span>
@@ -1092,6 +1227,22 @@ function SyncTools({ onUp, onDown }) {
       <button className="btn-up" title="Sync up" onClick={onUp}>↑</button>
       <button className="btn-down" title="Sync down" onClick={onDown}>↓</button>
     </div>
+  );
+}
+
+function SyncCheck({ selected, disabled, onToggle }) {
+  return (
+    <button
+      className={`sync-check ${selected ? 'active' : ''}`}
+      title={selected ? 'Remove from project sync' : 'Add to project sync'}
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+    >
+      ✓
+    </button>
   );
 }
 
@@ -1325,7 +1476,7 @@ function Field({ label, value, onChange, type = 'text' }) {
 }
 
 function pickProject(project) {
-  return { id: project.id, label: project.label || '', root: project.root, remotes: project.remotes, streams: project.streams || [] };
+  return { id: project.id, label: project.label || '', root: project.root, remotes: project.remotes, streams: project.streams || [], syncTargets: project.syncTargets || [] };
 }
 
 function pickRemote(remote) {
@@ -1425,6 +1576,10 @@ function uniqueId(items, base) {
   let index = 2;
   while (used.has(id)) id = `${base}-${index++}`;
   return id;
+}
+
+function formatTime(value) {
+  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function remoteKeys(project, remote) {
