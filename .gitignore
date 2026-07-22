@@ -6,3 +6,9 @@ dev.log
 .electron-cache/
 .env
 sync-projects.json
+sync-gui.db
+
+/lib/generated/prisma
+.windsurf
+.claude
+.agents

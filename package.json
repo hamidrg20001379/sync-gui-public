@@ -11,6 +11,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
+    "check:schema": "node scripts/check-prisma-db.mjs",
+    "migrate:db": "node scripts/migrate-to-db.mjs",
     "electron": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "electron:dev": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "dist": "npm run build && node scripts/package.js",
@@ -20,11 +22,15 @@
     "installer:linux": "node scripts/package-linux-appimage.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@prisma/adapter-libsql": "^7.9.0",
+    "@prisma/client": "^7.9.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
-    "electron": "^43.1.1"
+    "electron": "^43.1.1",
+    "prisma": "^7.9.0"
   }
 }
