@@ -19,11 +19,12 @@ const blankRemote = {
   categories: []
 };
 const blankCategory = { id: '', label: '', categories: [], mappings: [] };
-const blankMapping = { id: '', label: '', type: 'dir', local: '', remote: '', remoteId: '' };
+const blankMapping = { id: '', label: '', type: 'dir', local: '', remote: '', remoteId: '', templateId: 'default-category', variables: {} };
 
 export default function Page() {
   const [config, setConfig] = useState({ projects: [], remotes: [] });
   const [paths, setPaths] = useState({});
+  const [templates, setTemplates] = useState([]);
   const [projectId, setProjectId] = useState('');
   const [remoteId, setRemoteId] = useState('');
   const [streamId, setStreamId] = useState('');
@@ -43,6 +44,7 @@ export default function Page() {
 
   useEffect(() => {
     loadConfig();
+    loadTemplates();
     loadHistory();
   }, []);
 
@@ -159,6 +161,31 @@ export default function Page() {
       return next;
     });
     setDirty(true);
+  }
+
+  async function loadTemplates() {
+    const response = await fetch('/api/db/templates');
+    const data = await response.json();
+    if (response.ok) setTemplates(data.templates || []);
+  }
+
+  async function saveTemplate(value, originalId = '') {
+    const body = {
+      id: value.id,
+      name: value.label || value.name || value.id,
+      relative_path: value.relativePath || '',
+      relative_remote_path: value.relativeRemotePath || '',
+      variable_keys: JSON.stringify((value.variableKeys || '').split(',').map((item) => item.trim()).filter(Boolean)),
+      hidden: value.hidden ? 1 : 0
+    };
+    const response = await fetch(originalId ? `/api/db/templates/${encodeURIComponent(originalId)}` : '/api/db/templates', {
+      method: originalId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to save template');
+    await loadTemplates();
   }
 
   async function loadHistory() {
@@ -326,6 +353,15 @@ export default function Page() {
     });
   }
 
+  function openTemplate(item = null) {
+    setModal({
+      kind: 'template',
+      title: item ? 'Edit template' : 'Add template',
+      originalId: item?.id || '',
+      value: item ? pickTemplate(item) : { id: uniqueId(templates, 'template'), label: 'New template', relativePath: '', relativeRemotePath: '', variableKeys: '' }
+    });
+  }
+
   function openStream(item = null) {
     if (!project) return;
     setModal({
@@ -398,6 +434,14 @@ export default function Page() {
       validateModalValue(modal.kind, value, modal);
     } catch (error) {
       setOutput(error.message);
+      return;
+    }
+
+    if (modal.kind === 'template') {
+      saveTemplate(value, modal.originalId)
+        .then(() => setStatus('Ready'))
+        .catch((error) => setOutput(error.message));
+      setModal(null);
       return;
     }
 
@@ -562,6 +606,17 @@ export default function Page() {
     }
   }
 
+  async function deleteTemplate(item) {
+    if (item.id === 'default-category' || !confirm(`Delete template "${item.name || item.id}"?`)) return;
+    const response = await fetch(`/api/db/templates/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setOutput(data.error || 'Failed to delete template');
+      return;
+    }
+    await loadTemplates();
+  }
+
   function deleteStream(item) {
     if (!project || !confirm(`Delete stream "${item.label || item.id}"?`)) return;
     mutate((next) => {
@@ -723,6 +778,18 @@ export default function Page() {
               />
             ))}
             <AddCard label="Add remote" onClick={() => openRemote()} />
+          </CardStage>
+
+          <CardStage title="Templates">
+            {templates.map((item) => (
+              <TemplateCard
+                key={item.id}
+                template={item}
+                onEdit={() => openTemplate(item)}
+                onDelete={() => deleteTemplate(item)}
+              />
+            ))}
+            <AddCard label="Add template" onClick={() => openTemplate()} />
           </CardStage>
         </>
       )}
@@ -955,6 +1022,7 @@ export default function Page() {
           onApply={applyModal}
           projectRoot={project?.root || '.'}
           globalRemotes={config.remotes || []}
+          templates={templates}
         />
       )}
     </main>
@@ -1007,6 +1075,21 @@ function RemoteCard({ remote, syncCheck, onOpen, onEdit, onDelete, onUp, onDown 
       </div>
       {onUp && onDown && <SyncTools onUp={onUp} onDown={onDown} />}
       <CardTools onEdit={onEdit} onDelete={onDelete} />
+    </article>
+  );
+}
+
+function TemplateCard({ template, onEdit, onDelete }) {
+  return (
+    <article className="card remote-card">
+      <div className="card-main">
+        <h3>{template.name || template.id}</h3>
+        <p>{template.relative_path || '.'} -&gt; {template.relative_remote_path || '.'}</p>
+      </div>
+      <div className="stats">
+        <span>{template.variable_keys || '[]'}</span>
+      </div>
+      <CardTools onEdit={onEdit} onDelete={template.id === 'default-category' ? undefined : onDelete} />
     </article>
   );
 }
@@ -1317,9 +1400,10 @@ function FolderPicker({ root, currentPath, onSelect, onClose }) {
   );
 }
 
-function EditorModal({ modal, setModal, onApply, projectRoot, globalRemotes }) {
+function EditorModal({ modal, setModal, onApply, projectRoot, globalRemotes, templates }) {
   const value = modal.value;
   const [browsing, setBrowsing] = useState(false);
+  const visibleTemplates = templates.filter((template) => !template.hidden);
 
   const update = (field, fieldValue) => {
     const next = { ...value, [field]: fieldValue };
@@ -1418,9 +1502,19 @@ function EditorModal({ modal, setModal, onApply, projectRoot, globalRemotes }) {
               )}
             </>
           )}
-          {(modal.kind === 'category' || modal.kind === 'streamCategory') && null}
+          {modal.kind === 'template' && (
+            <>
+              <Field label="Local path suffix" value={value.relativePath || ''} onChange={(next) => update('relativePath', next)} />
+              <Field label="Remote path suffix" value={value.relativeRemotePath || ''} onChange={(next) => update('relativeRemotePath', next)} />
+              <Field label="Variable keys" value={value.variableKeys || ''} onChange={(next) => update('variableKeys', next)} />
+            </>
+          )}
+          {(modal.kind === 'category' || modal.kind === 'streamCategory') && (
+            <TemplatePicker value={value.templateId || 'default-category'} templates={visibleTemplates} onChange={(next) => update('templateId', next)} />
+          )}
           {(modal.kind === 'mapping' || modal.kind === 'streamMapping') && (
             <>
+              <TemplatePicker value={value.templateId || 'default-category'} templates={visibleTemplates} onChange={(next) => update('templateId', next)} />
               {modal.kind === 'streamMapping' && (
                 <label>
                   Remote
@@ -1479,6 +1573,24 @@ function pickProject(project) {
   return { id: project.id, label: project.label || '', root: project.root, remotes: project.remotes, streams: project.streams || [], syncTargets: project.syncTargets || [] };
 }
 
+function TemplatePicker({ value, templates, onChange }) {
+  return (
+    <label>
+      Template
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="default-category">Default category</option>
+        {templates
+          .filter((template) => template.id !== 'default-category')
+          .map((template) => (
+            <option value={template.id} key={template.id}>
+              {template.name || template.id}
+            </option>
+          ))}
+      </select>
+    </label>
+  );
+}
+
 function pickRemote(remote) {
   return {
     id: remote.id,
@@ -1504,10 +1616,22 @@ function pickProjectRemote(remote) {
   };
 }
 
+function pickTemplate(template) {
+  return {
+    id: template.id,
+    label: template.name || '',
+    relativePath: template.relative_path || '',
+    relativeRemotePath: template.relative_remote_path || '',
+    variableKeys: parseVariableKeys(template.variable_keys).join(', ')
+  };
+}
+
 function pickCategory(category) {
   return {
     id: category.id,
     label: category.label || '',
+    templateId: category.templateId || 'default-category',
+    variables: category.variables || {},
     categories: category.categories || [],
     mappings: category.mappings || []
   };
@@ -1531,6 +1655,7 @@ function cleanValue(value) {
 
 function validateModalValue(kind, value, modal = {}) {
   if (!/^[A-Za-z0-9._-]+$/.test(value.id || '')) throw new Error('Id can use letters, numbers, dot, dash, and underscore.');
+  if (kind === 'template' && !(value.label || value.name)) throw new Error('Template name is required.');
   if (kind === 'project' && !value.root) throw new Error('Project root is required.');
   if (kind === 'remote') {
     const remoteKind = getRemoteKind(value);
@@ -1551,6 +1676,14 @@ function validateModalValue(kind, value, modal = {}) {
     if (!value.remote) throw new Error('Remote path is required.');
     const remoteKind = modal.remoteKinds?.[value.remoteId] || modal.remoteKind || 'ssh';
     if (remoteKind === 'ssh' && !value.remote.startsWith('/')) throw new Error('Remote path must start with /.');
+  }
+}
+
+function parseVariableKeys(value) {
+  try {
+    return Array.isArray(value) ? value : JSON.parse(value || '[]');
+  } catch {
+    return [];
   }
 }
 
