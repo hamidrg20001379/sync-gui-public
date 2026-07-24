@@ -2,112 +2,73 @@
 
 **ENGLISH** | [فارسی](README.fa.md)
 
-Sync GUI is a local desktop/web interface for managing repeatable file sync mappings between projects and remote targets. It is useful when one project has several deployment targets, and each target needs its own independent categories and file/folder mappings.
+Sync GUI is a local desktop/web interface for managing file/folder sync between projects and remote targets via SSH or local copy.
 
-![Sync GUI demo with mock data](docs/demo.gif)
+## Architecture
 
-## Download
+Three-tier model stored in a single JSON file (`sync-config.json`):
 
-If you just want to install the app, use the latest release downloads:
+- **Remotes** — SSH or Local connections
+- **Projects** — group name linked to a remote
+- **Sync Items** — flat list of source→destination pairs, each assigned to a project
 
-- [Windows installer `.exe`](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-Setup-win32-x64.exe)
-- [Windows portable `.zip`](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-win32-x64.zip)
-- [macOS Apple Silicon `.dmg`](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-darwin-arm64.dmg)
-- [macOS Intel `.dmg`](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-darwin-x64.dmg)
-- [Linux AppImage](https://github.com/hamidrg20001379/sync-gui-public/releases/latest/download/Sync-GUI-linux-x64.AppImage)
-
-All release files are also on the [latest release page](https://github.com/hamidrg20001379/sync-gui-public/releases/latest).
+Direction (↑ upload / ↓ download) is chosen at sync time, not stored per item.
 
 ## Features
 
-- Manage projects, remotes, categories, and file/folder mappings from one UI.
-- Keep project remotes independent while reusing shared connection details.
-- Sync individual mappings, whole categories, or complete remotes.
-- Supports SSH, local folders, and network share style remotes.
-- Includes GitHub Actions workflows for CI and release builds.
-- Release workflow can publish Windows portable zip, Windows installer, Linux archive, macOS archives, DMG files, and Linux AppImage files.
-- Checks GitHub Releases for updates and asks before opening the right download.
-
-## Privacy
-
-This public repository intentionally does **not** include real sync configuration, credentials, server paths, IP addresses, or project data.
-
-Use these local-only files for your own setup:
-
-- `sync-projects.json`
-- `.env`
-
-They are ignored by git. Start from the examples:
-
-```powershell
-Copy-Item sync-projects.example.json sync-projects.json
-Copy-Item .env.example .env
-```
+- Manage Remotes (SSH/Local), Projects, and Sync Items from one UI
+- Flat item list with search, project filter, and pagination (30/page)
+- Sync per item (↑/↓) or Sync All (both directions)
+- Dry-run toggle, no-delete toggle (saved in localStorage)
+- Live progress bar + console output during sync
+- In-memory job history (last 100 runs)
+- Runtime dependency check (bash, rsync, sshpass, ssh)
+- Cross-platform: Linux, Windows (via MSYS2), macOS
+- Setup scripts automatically install dependencies
 
 ## Quick Start
 
-```powershell
+```bash
 npm install
-Copy-Item sync-projects.example.json sync-projects.json
-Copy-Item .env.example .env
+cp sync-config.example.json sync-config.json
 npm run dev
 ```
 
-Open the local Next.js URL shown in the terminal.
+Open the local Next.js URL shown in the terminal. For the Electron app:
 
-For the Electron app:
-
-```powershell
+```bash
 npm run electron
 ```
 
+## Setup Scripts
+
+One-command dependency install + app launch:
+
+| Platform | Script |
+|----------|--------|
+| Linux | `bash scripts/setup-linux.sh` |
+| Windows | `powershell -File scripts/setup-win.ps1` |
+
 ## Build
 
-```powershell
-npm run build
+```bash
+npm run build       # Next.js build
+npm run dist        # desktop package for current OS
+npm run installer:win     # Windows installer (Inno Setup)
+npm run installer:mac     # macOS .dmg
+npm run installer:linux   # Linux .AppImage
 ```
 
-Create a portable desktop package for your current OS:
+## Tests
 
-```powershell
-npm run dist
+```bash
+node --experimental-detect-module --test tests/api-test.mjs
 ```
-
-Create a one-file installer/package after building the portable package:
-
-```powershell
-npm run installer:win
-npm run installer:mac
-npm run installer:linux
-```
-
-The Windows installer build requires Inno Setup. macOS creates a `.dmg`, and Linux creates an `.AppImage`.
-
-## Updates
-
-The app checks GitHub Releases once per session and also includes a `Check updates` button. When a newer `v*` release exists, it asks before opening the matching download for the current OS:
-
-- Windows: installer `.exe`, then portable `.zip` as fallback.
-- macOS: `.dmg`, then `.tar.gz` as fallback.
-- Linux: `.AppImage`, then `.tar.gz` as fallback.
-
-This is a prompt-to-download updater. It does not silently install updates.
 
 ## Configuration
 
-`sync-projects.example.json` shows the public-safe shape:
+`sync-config.example.json` shows the schema:
 
-- `projects[]` define local project roots.
-- `remotes[]` define reusable connection details.
-- each project remote can point to a reusable remote using `remoteId`.
-- each project remote owns its own `categories[]`.
-
-Credentials can be read from `.env` through fields such as:
-
-```json
-{
-  "hostEnv": "SERVER_HOST",
-  "usernameEnv": "SERVER_USERNAME",
-  "passwordEnv": "SERVER_PASSWORD"
-}
-```
+- `remotes[]` — SSH (`host`, `port`, `username`, `password`) or Local (`type: "local"`)
+- `projects[]` — `name` + `remoteId`
+- `items[]` — `name`, `source`, `dest`, `type` (file|folder), `projectId`
