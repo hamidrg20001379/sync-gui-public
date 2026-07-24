@@ -1,0 +1,38 @@
+{
+  "remotes": [
+    {
+      "id": "prod-server",
+      "name": "Production Server",
+      "kind": "ssh",
+      "host": "192.168.1.100",
+      "port": 22,
+      "username": "deploy",
+      "password": ""
+    }
+  ],
+  "projects": [
+    {
+      "id": "myapp",
+      "name": "My App",
+      "remoteId": "prod-server"
+    }
+  ],
+  "items": [
+    {
+      "id": "static-assets",
+      "name": "Static Assets",
+      "source": "/home/user/project/dist",
+      "dest": "/var/www/html",
+      "type": "folder",
+      "projectId": "myapp"
+    },
+    {
+      "id": "config-file",
+      "name": "Config File",
+      "source": "/home/user/project/.env",
+      "dest": "/var/www/html/.env",
+      "type": "file",
+      "projectId": "myapp"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "remotes": [
+    {
+      "id": "my-server",
+      "name": "My Server",
+      "kind": "ssh",
+      "host": "192.168.1.100",
+      "port": 22,
+      "username": "deploy",
+      "password": ""
+    }
+  ],
+  "projects": [
+    {
+      "id": "myapp",
+      "name": "myapp",
+      "remoteId": "my-server"
+    }
+  ],
+  "items": [
+    {
+      "id": "myapp-0",
+      "name": "dist",
+      "source": "/home/deploy/myapp/dist",
+      "dest": "/var/www/myapp/html",
+      "type": "folder",
+      "projectId": "myapp"
+    },
+    {
+      "id": "myapp-1",
+      "name": ".env",
+      "source": "/home/deploy/myapp/.env",
+      "dest": "/var/www/myapp/.env",
+      "type": "file",
+      "projectId": "myapp"
+    }
+  ]
+}
