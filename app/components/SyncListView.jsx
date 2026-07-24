@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import EditorModal from './EditorModal';
 import ConfirmModal from './ConfirmModal';
 import { toast } from './Toast';
@@ -27,6 +27,9 @@ export default function SyncListView({ config, onRefresh }) {
   const [history, setHistory] = useState([]);
   const [syncingIds, setSyncingIds] = useState([]);
 
+  const pollRef = useRef(null);
+  const mountedRef = useRef(true);
+
   const [dryRun, setDryRun] = useState(() => {
     if (typeof window === 'undefined') return false;
     return JSON.parse(localStorage.getItem(LS_KEY) || '{}').dryRun || false;
@@ -37,7 +40,8 @@ export default function SyncListView({ config, onRefresh }) {
   });
 
   useEffect(() => { localStorage.setItem(LS_KEY, JSON.stringify({ dryRun, noDelete })); }, [dryRun, noDelete]);
-  useEffect(() => { loadHistory(); const id = setInterval(loadHistory, 3000); return () => clearInterval(id); }, []);
+  useEffect(() => { loadHistory(); const id = setInterval(loadHistory, 5000); return () => clearInterval(id); }, []);
+  useEffect(() => { return () => { mountedRef.current = false; if (pollRef.current) clearInterval(pollRef.current); }; }, []);
 
   async function loadHistory() {
     const r = await fetch('/api/history');
@@ -90,12 +94,13 @@ export default function SyncListView({ config, onRefresh }) {
   }
 
   function pollJob(id) {
-    const id_ = setInterval(async () => {
+    pollRef.current = setInterval(async () => {
+      if (!mountedRef.current) { clearInterval(pollRef.current); return; }
       const r = await fetch(`/api/run?id=${id}`);
       if (!r.ok) return;
       const job = await r.json();
       if (job.status !== 'running') {
-        clearInterval(id_);
+        clearInterval(pollRef.current);
         setOutput(job.output || '');
         setStatus(job.status === 'succeeded' ? 'done' : 'failed');
         setSyncingIds([]); loadHistory();
