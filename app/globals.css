@@ -744,6 +744,79 @@ label {
 .filter-select:hover { border-color: #c8d3e4; background-color: #fff; }
 
 /* Responsive */
+.topbar-divider {
+  width: 1px; height: 24px;
+  background: var(--line);
+  margin: 0 4px;
+}
+.topbar-btn {
+  font-size: 12px; padding: 6px 14px; font-weight: 600;
+  white-space: nowrap;
+}
+
+.import-modal { width: min(600px, 100%); }
+.import-summary {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 16px;
+}
+.import-badge {
+  font-size: 12px; font-weight: 600;
+  padding: 4px 12px; border-radius: 999px;
+}
+.import-badge.new { background: var(--ok-soft); color: var(--ok); }
+.import-badge.conflict { background: var(--warn-soft); color: var(--warn); }
+.import-group {
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.import-group h4 {
+  margin: 0; font-size: 13px; font-weight: 700;
+  padding: 10px 14px;
+  background: rgba(247, 249, 252, .8);
+  border-bottom: 1px solid var(--line);
+}
+.import-conflict-row {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+}
+.import-conflict-row:last-child { border-bottom: 0; }
+.import-conflict-info { display: flex; align-items: center; gap: 8px; }
+.import-conflict-info strong { font-size: 14px; }
+.import-sub { color: var(--muted); font-size: 12px; }
+.import-conflict-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.import-side {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.import-side-label {
+  display: block;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.imported-side { border-left: 3px solid var(--accent); }
+.existing-side { border-left: 3px solid var(--warn); }
+.import-conflict-action {
+  display: flex; gap: 8px;
+}
+.import-conflict-action select { width: auto; min-width: 110px; font-size: 12px; padding: 4px 8px; }
+.import-conflict-action input { flex: 1; font-size: 12px; padding: 4px 8px; }
+.import-no-conflicts { color: var(--muted); font-size: 14px; text-align: center; padding: 20px; }
+
 @media (max-width: 800px) {
   .topbar { flex-direction: column; align-items: stretch; }
   .top-actions { justify-content: flex-start; }
