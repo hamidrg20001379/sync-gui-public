@@ -11,26 +11,19 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "check:schema": "node scripts/check-prisma-db.mjs",
-    "migrate:db": "node scripts/migrate-to-db.mjs",
-    "electron": "set ELECTRON_RUN_AS_NODE=&& electron .",
-    "electron:dev": "set ELECTRON_RUN_AS_NODE=&& electron .",
+    "electron": "electron .",
+    "electron:dev": "electron .",
     "dist": "npm run build && node scripts/package.js",
-    "windows:installer": "npm run installer:win",
     "installer:win": "node scripts/package-win-installer.js",
     "installer:mac": "node scripts/package-mac-dmg.js",
     "installer:linux": "node scripts/package-linux-appimage.js"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.4",
-    "@prisma/adapter-libsql": "^7.9.0",
-    "@prisma/client": "^7.9.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
-    "electron": "^43.1.1",
-    "prisma": "^7.9.0"
+    "electron": "^43.1.1"
   }
 }

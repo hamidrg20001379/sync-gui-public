@@ -24,14 +24,14 @@ process.on('unhandledRejection', (error) => {
 });
 
 if (app.isPackaged) {
-  const workspaceConfigPath = path.resolve(exeDir, '..', '..', 'sync-projects.json');
+  const workspaceConfigPath = path.resolve(exeDir, '..', '..', 'sync-config.json');
   const configPath = fs.existsSync(workspaceConfigPath)
     ? workspaceConfigPath
-    : path.join(exeDir, 'sync-projects.json');
-  const bundledConfigPath = path.join(appRoot, 'sync-projects.json');
+    : path.join(exeDir, 'sync-config.json');
+  const bundledConfigPath = path.join(appRoot, 'sync-config.json');
 
   process.chdir(exeDir);
-  process.env.SYNC_GUI_CONFIG ||= configPath;
+  process.env.SYNC_CONFIG ||= configPath;
   process.env.SYNC_GUI_ENV ||= path.join(path.dirname(configPath), '.env');
 
   if (!fs.existsSync(configPath) && fs.existsSync(bundledConfigPath)) {
