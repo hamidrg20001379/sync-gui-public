@@ -4,9 +4,20 @@ import { analyzeImport, applyImport } from '../../../lib/import';
 
 export async function POST(request) {
   try {
-    const { action, data, resolutions } = await request.json();
+    const { action, data: rawData, resolutions } = await request.json();
     if (!action) return NextResponse.json({ error: 'action is required' }, { status: 400 });
-    if (!data) return NextResponse.json({ error: 'data is required' }, { status: 400 });
+    if (!rawData) return NextResponse.json({ error: 'data is required' }, { status: 400 });
+
+    // Normalize imported data: convert dest → targets
+    const data = { remotes: rawData.remotes || [], projects: rawData.projects || [], items: [] };
+    for (const item of rawData.items || []) {
+      if (item.dest && !item.targets) {
+        const project = data.projects.find(p => p.id === item.projectId);
+        data.items.push({ ...item, targets: [{ name: 'Default', remoteId: project?.remoteId || '', dest: item.dest }], dest: undefined });
+      } else {
+        data.items.push({ ...item });
+      }
+    }
 
     const existing = await readConfig();
 

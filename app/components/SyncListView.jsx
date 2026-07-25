@@ -2,17 +2,18 @@
 import { useState, useEffect, useRef } from 'react';
 import EditorModal from './EditorModal';
 import ConfirmModal from './ConfirmModal';
+import TargetPicker from './TargetPicker';
 import { toast } from './Toast';
 
 const PAGE_SIZE = 30;
 const LS_KEY = 'sync-gui-settings';
 
 function blankItem() {
-  return { id: '', name: '', source: '', dest: '', type: 'folder', projectId: '' };
+  return { id: '', name: '', source: '', type: 'folder', projectId: '', targets: [{ name: '', remoteId: '', dest: '' }] };
 }
 
 function resolveProject(id, projects) { return projects.find(p => p.id === id); }
-function resolveRemote(project, remotes) { return remotes.find(r => r.id === project?.remoteId); }
+function resolveRemote(id, remotes) { return remotes.find(r => r.id === id); }
 
 export default function SyncListView({ config, onRefresh }) {
   const { items = [], projects = [], remotes = [] } = config;
@@ -26,6 +27,7 @@ export default function SyncListView({ config, onRefresh }) {
   const [status, setStatus] = useState('ready');
   const [history, setHistory] = useState([]);
   const [syncingIds, setSyncingIds] = useState([]);
+  const [syncTargetPicker, setSyncTargetPicker] = useState(null);
 
   const pollRef = useRef(null);
   const mountedRef = useRef(true);
@@ -58,20 +60,21 @@ export default function SyncListView({ config, onRefresh }) {
   }
 
   function openNew() { setEditing(blankItem()); setShowForm(true); }
-  function openEdit(item) { setEditing({ ...item }); setShowForm(true); }
+  function openEdit(item) { setEditing({ ...item, targets: (item.targets || []).map(t => ({ ...t })) }); setShowForm(true); }
 
-  async function save() {
+  function save() {
     if (!editing.name) { toast('Name is required.', 'error'); return; }
     if (!editing.source) { toast('Source path is required.', 'error'); return; }
-    if (!editing.dest) { toast('Destination path is required.', 'error'); return; }
     if (!editing.projectId) { toast('Select a project.', 'error'); return; }
+    const validTargets = (editing.targets || []).filter(t => t.dest);
+    if (!validTargets.length) { toast('At least one target with a destination path is required.', 'error'); return; }
     const idx = items.findIndex(i => i.id === editing.id);
     const next = [...items];
     if (!editing.id) editing.id = editing.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now().toString(36);
-    if (idx >= 0) next[idx] = editing;
-    else next.push(editing);
-    try { await saveConfig(next); setShowForm(false); toast('Item saved.'); }
-    catch (e) { toast(e.message, 'error'); }
+    const saved = { ...editing, targets: validTargets };
+    if (idx >= 0) next[idx] = saved;
+    else next.push(saved);
+    saveConfig(next).then(() => { setShowForm(false); toast('Item saved.'); }).catch(e => toast(e.message, 'error'));
   }
 
   function removeItem(id) { setConfirmDelete(items.find(i => i.id === id)); }
@@ -80,17 +83,38 @@ export default function SyncListView({ config, onRefresh }) {
     catch (e) { toast(e.message, 'error'); }
   }
 
-  async function doSync(itemIds, direction) {
+  function doSync(itemIds, direction, targetMap = {}) {
     setStatus('running'); setSyncingIds(itemIds);
-    setOutput(`> syncing ${itemIds.length} item(s) ${direction}\n`);
-    const r = await fetch('/api/run', {
+    const label = direction === 'up' ? '↑' : '↓';
+    setOutput(`> syncing ${itemIds.length} item(s) ${label}\n`);
+    fetch('/api/run', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dryRun, noDelete, direction, itemIds })
+      body: JSON.stringify({ dryRun, noDelete, direction, itemTargets: targetMap })
+    }).then(r => r.json()).then(data => {
+      if (data.error) { setOutput(o => o + (data.error || 'Failed') + '\n'); setStatus('failed'); setSyncingIds([]); return; }
+      setOutput(o => o + `Job #${data.id} started.\n`);
+      pollJob(data.id);
     });
-    const data = await r.json();
-    if (!r.ok) { setOutput(o => o + (data.error || 'Failed') + '\n'); setStatus('failed'); setSyncingIds([]); return; }
-    setOutput(o => o + `Job #${data.id} started.\n`);
-    pollJob(data.id);
+  }
+
+  function handleSingleSync(item, direction, targetIndices) {
+    setSyncTargetPicker(null);
+    doSync([item.id], direction, { [item.id]: targetIndices });
+  }
+
+  function handleSyncAll(direction) {
+    const targets = {};
+    for (const item of items) {
+      if (!item.targets?.length) continue;
+      if (direction === 'up') {
+        targets[item.id] = item.targets.map((_, i) => i);
+      } else {
+        targets[item.id] = [0];
+      }
+    }
+    const ids = Object.keys(targets);
+    if (!ids.length) { toast('No items with targets to sync.', 'error'); return; }
+    doSync(ids, direction, targets);
   }
 
   function pollJob(id) {
@@ -108,6 +132,15 @@ export default function SyncListView({ config, onRefresh }) {
         else toast('Sync failed.', 'error');
       }
     }, 1000);
+  }
+
+  function itemTargetLabel(item) {
+    const ts = item.targets || [];
+    if (!ts.length) return 'No targets';
+    const first = ts[0];
+    const remote = resolveRemote(first.remoteId, remotes);
+    const tag = remote?.name || '?';
+    return ts.length === 1 ? `${tag}: ${first.dest}` : `${tag}: ${first.dest} +${ts.length - 1}`;
   }
 
   const q = search.toLowerCase();
@@ -140,7 +173,10 @@ export default function SyncListView({ config, onRefresh }) {
           <span className={`status ${status}`}>
             {status === 'running' ? `${syncingIds.length} running` : status}
           </span>
-          {items.length > 0 && <><button className="primary" onClick={() => doSync(filtered.map(i => i.id), 'up')}>Sync All ↑</button><button className="primary" onClick={() => doSync(filtered.map(i => i.id), 'down')} style={{ marginLeft: 4 }}>Sync All ↓</button></>}
+          {items.length > 0 && <>
+            <button className="primary" onClick={() => handleSyncAll('up')}>Sync All ↑</button>
+            <button className="primary" onClick={() => handleSyncAll('down')} style={{ marginLeft: 4 }}>Sync All ↓</button>
+          </>}
           <button className="primary" onClick={openNew}>+ New</button>
         </div>
       </div>
@@ -158,15 +194,14 @@ export default function SyncListView({ config, onRefresh }) {
         <div className="item-list">
           {paged.map(item => {
             const project = resolveProject(item.projectId, projects);
-            const remote = resolveRemote(project, remotes);
             return (
             <div key={item.id} className={`item-card ${item.type}`}>
               <div className="item-head">
                 <span className="type-icon">{item.type === 'folder' ? '📁' : '📄'}</span>
                 <span className="item-name">{item.name}</span>
                 <div className="item-actions">
-                  <button className="btn-up" onClick={() => doSync([item.id], 'up')} title="Sync up" aria-label="Sync up">↑</button>
-                  <button className="btn-down" onClick={() => doSync([item.id], 'down')} title="Sync down" aria-label="Sync down">↓</button>
+                  <button className="btn-up" onClick={() => setSyncTargetPicker({ item, direction: 'up' })} title="Sync up" aria-label="Sync up">↑</button>
+                  <button className="btn-down" onClick={() => setSyncTargetPicker({ item, direction: 'down' })} title="Sync down" aria-label="Sync down">↓</button>
                   <button className="card-btn card-btn-edit" onClick={() => openEdit(item)} aria-label="Edit">⚙</button>
                   <button className="card-btn card-btn-del" onClick={() => removeItem(item.id)} aria-label="Delete">✕</button>
                 </div>
@@ -174,13 +209,12 @@ export default function SyncListView({ config, onRefresh }) {
               <div className="item-paths">
                 <span className="item-source">{item.source}</span>
                 <span className="mapping-arrow">→</span>
-                <span className="item-dest">{item.dest}</span>
+                <span className="item-dest">{itemTargetLabel(item)}</span>
               </div>
               <div className="item-meta">
-                <span className={`badge badge-${remote?.kind || 'local'}`}>{remote?.kind || 'local'}</span>
-                {remote?.kind === 'ssh' && <span className="conn-detail">{remote.username}@{remote.host}</span>}
-                <span className={`badge badge-${item.type}`}>{item.type}</span>
                 <span className="group-tag">{project?.name || '?'}</span>
+                <span className={`badge badge-${item.type}`}>{item.type}</span>
+                <span className="conn-detail">{(item.targets || []).length} target(s)</span>
               </div>
             </div>
             );
@@ -223,12 +257,21 @@ export default function SyncListView({ config, onRefresh }) {
         </div>
       )}
 
+      {syncTargetPicker && (
+        <TargetPicker
+          item={syncTargetPicker.item}
+          remotes={remotes}
+          direction={syncTargetPicker.direction}
+          onStart={ti => handleSingleSync(syncTargetPicker.item, syncTargetPicker.direction, ti)}
+          onClose={() => setSyncTargetPicker(null)}
+        />
+      )}
+
       {showForm && (
         <EditorModal title={editing.id ? 'Edit Sync Item' : 'New Sync Item'} onClose={() => setShowForm(false)} onSave={save}>
           <div className="form">
             <label>Name <input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} placeholder="e.g. Static assets" /></label>
             <label>Source path (local) <input value={editing.source} onChange={e => setEditing({ ...editing, source: e.target.value })} placeholder="/home/user/project/dist" /></label>
-            <label>Destination path <input value={editing.dest} onChange={e => setEditing({ ...editing, dest: e.target.value })} placeholder="/var/www/html" /></label>
             <label>Type
               <select value={editing.type} onChange={e => setEditing({ ...editing, type: e.target.value })}>
                 <option value="folder">Folder</option>
@@ -238,12 +281,24 @@ export default function SyncListView({ config, onRefresh }) {
             <label>Project
               <select value={editing.projectId} onChange={e => setEditing({ ...editing, projectId: e.target.value })}>
                 <option value="">— Select —</option>
-                {projects.map(p => {
-                  const r = resolveRemote(p, remotes);
-                  return <option key={p.id} value={p.id}>{p.name} ({r?.name || r?.kind || '?'})</option>;
-                })}
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </label>
+            <div className="form-section">Targets</div>
+            {(editing.targets || []).map((t, i) => (
+              <div key={i} className="target-row">
+                <div className="target-row-fields">
+                  <input className="target-name" value={t.name || ''} onChange={e => { const ts = [...editing.targets]; ts[i] = { ...ts[i], name: e.target.value }; setEditing({ ...editing, targets: ts }); }} placeholder="Label (optional)" />
+                  <select className="target-remote" value={t.remoteId} onChange={e => { const ts = [...editing.targets]; ts[i] = { ...ts[i], remoteId: e.target.value }; setEditing({ ...editing, targets: ts }); }}>
+                    <option value="">— Remote —</option>
+                    {remotes.map(r => <option key={r.id} value={r.id}>{r.name} ({r.kind})</option>)}
+                  </select>
+                  <input className="target-dest" value={t.dest} onChange={e => { const ts = [...editing.targets]; ts[i] = { ...ts[i], dest: e.target.value }; setEditing({ ...editing, targets: ts }); }} placeholder="/remote/path" />
+                </div>
+                <button type="button" className="target-remove" onClick={() => { const ts = editing.targets.filter((_, j) => j !== i); setEditing({ ...editing, targets: ts }); }} disabled={editing.targets.length <= 1}>&times;</button>
+              </div>
+            ))}
+            <button type="button" className="target-add" onClick={() => setEditing({ ...editing, targets: [...(editing.targets || []), { name: '', remoteId: '', dest: '' }] })}>+ Add target</button>
           </div>
         </EditorModal>
       )}
