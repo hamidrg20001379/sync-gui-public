@@ -147,6 +147,7 @@ function copyApp() {
     'app',
     'electron',
     'lib',
+    'vendor',
     'next.config.mjs',
     'package.json',
     'package-lock.json',

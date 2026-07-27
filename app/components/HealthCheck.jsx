@@ -8,7 +8,7 @@ const INFO = {
     level: 'critical',
     fix: {
       linux: 'Pre-installed on all Linux distributions',
-      win: 'Installed automatically with MSYS2',
+      win: 'Bundle bash.exe under vendor/win-tools/usr/bin or install MSYS2',
     },
   },
   rsync: {
@@ -17,7 +17,7 @@ const INFO = {
     level: 'critical',
     fix: {
       linux: 'sudo apt install rsync',
-      win: 'Installed automatically with MSYS2 (pacman -S rsync)',
+      win: 'Bundle rsync.exe under vendor/win-tools/usr/bin or install it with MSYS2',
     },
   },
   sshpass: {
@@ -31,7 +31,7 @@ const INFO = {
     level: 'recommended',
     fix: {
       linux: 'sudo apt install sshpass',
-      win: 'pacman -S sshpass (inside MSYS2)',
+      win: 'Bundle sshpass.exe under vendor/win-tools/usr/bin or install it with MSYS2',
     },
   },
   ssh: {
@@ -40,7 +40,7 @@ const INFO = {
     level: 'critical',
     fix: {
       linux: 'sudo apt install openssh-client',
-      win: 'Installed automatically with MSYS2 (pacman -S openssh)',
+      win: 'Bundle ssh.exe under vendor/win-tools/usr/bin or install it with MSYS2',
     },
   },
 };
@@ -122,12 +122,12 @@ export default function HealthCheck() {
 
       {expanded && (
         <div style={{ padding: '0 16px 14px', display: 'grid', gap: 12 }}>
-          {isWin && !deps.msys2 && (
+          {isWin && !deps.bundled && !deps.msys2 && (
             <div style={{ background: '#fef2f2', borderRadius: 8, padding: '10px 14px', border: '1px solid #fecaca' }}>
-              <div style={{ fontWeight: 700, color: '#991b1b', marginBottom: 4 }}>MSYS2 not installed</div>
+              <div style={{ fontWeight: 700, color: '#991b1b', marginBottom: 4 }}>Bundled tools not found</div>
               <div style={{ color: '#7f1d1d', fontSize: 12, lineHeight: 1.6 }}>
-                MSYS2 provides the Unix environment (bash, rsync, ssh, sshpass) required on Windows.
-                Run <strong>setup-win.ps1</strong> or download from msys2.org.
+                Windows needs either bundled Unix tools or an MSYS2 install.
+                Put the toolchain under <strong>vendor/win-tools/usr/bin</strong> before packaging, or run <strong>setup-win.ps1</strong>.
               </div>
             </div>
           )}
@@ -162,7 +162,7 @@ export default function HealthCheck() {
 
           <div style={{ textAlign: 'center', color: '#78716c', fontSize: 11, paddingTop: 2 }}>
             {isWin
-              ? 'Run setup-win.ps1 to install all dependencies automatically'
+              ? 'Preferred for the installer: ship vendor/win-tools/usr/bin with bash, rsync, sshpass, ssh, and required DLLs'
               : 'Quick install:  sudo apt install rsync sshpass openssh-client'}
           </div>
         </div>

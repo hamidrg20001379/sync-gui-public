@@ -1,6 +1,7 @@
 import { exec } from 'node:child_process';
 import { platform } from 'node:os';
 import { access } from 'node:fs/promises';
+import { bundledWindowsToolStatus, resolveBashPath, runtimeToolEnv } from '../../../lib/runtime-tools.mjs';
 
 function commandExists(command, locationOutput) {
   return locationOutput.split(/\r?\n/).some((line) => {
@@ -19,14 +20,15 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   if (platform() === 'win32') {
-    const msys2Bash = process.env.SYNC_GUI_BASH || 'C:\\msys64\\usr\\bin\\bash.exe';
+    const msys2Bash = resolveBashPath();
+    const bundledStatus = bundledWindowsToolStatus();
     let msys2 = false;
     try { await access(msys2Bash); msys2 = true; } catch {}
     const deps = { bash: false, rsync: false, sshpass: false, ssh: false };
     if (msys2) {
       try {
         const out = await new Promise((resolve, reject) => {
-          exec(`"${msys2Bash}" -lc "command -v bash rsync sshpass ssh"`, { timeout: 5000 }, (err, stdout) => {
+          exec(`"${msys2Bash}" -lc "command -v bash rsync sshpass ssh"`, { timeout: 5000, env: runtimeToolEnv() }, (err, stdout) => {
             if (err) reject(err); else resolve(stdout);
           });
         });
@@ -35,7 +37,13 @@ export async function GET() {
         }
       } catch { /* deps stay false */ }
     }
-    return Response.json({ ok: Object.values(deps).every(Boolean), platform: 'win32', deps, msys2 });
+    return Response.json({
+      ok: Object.values(deps).every(Boolean),
+      platform: 'win32',
+      deps,
+      msys2,
+      bundled: bundledStatus.bundled,
+    });
   }
 
   const tools = ['bash', 'rsync', 'sshpass', 'ssh'];

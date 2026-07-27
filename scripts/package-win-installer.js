@@ -18,6 +18,7 @@ function findIscc() {
     return execFileSync('where', ['ISCC.exe'], { encoding: 'utf8', windowsHide: true }).trim().split(/\r?\n/)[0];
   } catch {
     const candidates = [
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Inno Setup 6', 'ISCC.exe'),
       path.join(process.env['ProgramFiles(x86)'] || '', 'Inno Setup 6', 'ISCC.exe'),
       path.join(process.env.ProgramFiles || '', 'Inno Setup 6', 'ISCC.exe')
     ];

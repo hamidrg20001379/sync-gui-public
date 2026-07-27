@@ -61,6 +61,20 @@ npm run installer:mac     # macOS .dmg
 npm run installer:linux   # Linux .AppImage
 ```
 
+## Bundled Windows Tools
+
+To ship a self-contained Windows installer, place the required Unix tools under `vendor/win-tools/usr/bin` before running `npm run dist` or `npm run installer:win`.
+
+Required files:
+
+- `bash.exe`
+- `rsync.exe`
+- `ssh.exe`
+- `sshpass.exe`
+- the DLLs those binaries depend on
+
+The packaged app now prefers these bundled tools automatically on Windows and falls back to `C:\msys64\usr\bin\bash.exe` only when the bundle is absent.
+
 ## Tests
 
 ```bash
