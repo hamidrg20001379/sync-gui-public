@@ -1,8 +1,7 @@
 import { access } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { readConfig } from '../../../../lib/config.js';
-import { resolveBashPath, runtimeToolEnv } from '../../../../lib/runtime-tools.mjs';
+import { spawnRuntimeBash } from '../../../../lib/runtime-tools.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +33,6 @@ function checkSsh(remote) {
       return;
     }
 
-    const bash = resolveBashPath();
     const ssh = [
       'sshpass -e ssh',
       `-p ${shq(String(remote.port || 22))}`,
@@ -45,12 +43,7 @@ function checkSsh(remote) {
       shq('printf ok')
     ].join(' ');
 
-    const env = runtimeToolEnv({ SSHPASS: remote.password || '' });
-    const child = spawn(bash, ['-lc', ssh], {
-      cwd: process.cwd(),
-      env,
-      windowsHide: true,
-    });
+    const child = spawnRuntimeBash(ssh, { SSHPASS: remote.password || '' });
 
     let output = '';
     child.stdout.on('data', d => output += d.toString());

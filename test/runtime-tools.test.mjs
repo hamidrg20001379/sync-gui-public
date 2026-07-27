@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { bundledWindowsBash, bundledWindowsBinDir, runtimeToolEnv } from '../lib/runtime-tools.mjs';
+import { bundledWindowsBash, bundledWindowsBinDir, runtimeToolEnv, spawnRuntimeBash, toBashPath } from '../lib/runtime-tools.mjs';
 
 test('bundled Windows tool paths point at vendor/win-tools/usr/bin', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-gui-tools-'));
@@ -19,6 +19,7 @@ test('bundled Windows runtime env creates an MSYS2 home directory', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-gui-tools-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(bundledWindowsBinDir(root), { recursive: true });
+  fs.writeFileSync(bundledWindowsBash(root), '');
   const previousPlatform = process.platform;
   const previousUsername = process.env.USERNAME;
 
@@ -27,7 +28,8 @@ test('bundled Windows runtime env creates an MSYS2 home directory', (t) => {
 
   try {
     const env = runtimeToolEnv({}, root);
-    assert.equal(env.HOME, path.join(root, 'vendor', 'win-tools', 'home', 'hamid').replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`));
+    assert.equal(env.HOME, path.join(root, 'vendor', 'win-tools', 'home', 'hamid').replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, drive) => `/cygdrive/${drive.toLowerCase()}`));
+    assert.equal(toBashPath('C:\\folder with spaces\\file.txt', root), '/cygdrive/c/folder with spaces/file.txt');
     assert.equal(fs.existsSync(path.join(root, 'vendor', 'win-tools', 'home', 'hamid', '.ssh')), true);
   } finally {
     Object.defineProperty(process, 'platform', { value: previousPlatform });
@@ -50,4 +52,16 @@ test('bundled Bash starts from a Windows working directory containing spaces', {
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /My Github Projects/);
+});
+
+test('hidden runtime Bash preserves output and exit status', { skip: process.platform !== 'win32' }, async () => {
+  const child = spawnRuntimeBash('printf hidden-ok');
+  let output = '';
+  child.stdout.on('data', chunk => output += chunk);
+  const code = await new Promise((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', resolve);
+  });
+  assert.equal(code, 0);
+  assert.equal(output, 'hidden-ok');
 });
