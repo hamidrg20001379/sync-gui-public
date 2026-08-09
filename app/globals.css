@@ -2126,7 +2126,8 @@ label {
 
 .item-actions-bottom .btn-up,
 .item-actions-bottom .btn-down,
-.item-actions-bottom .live-icon {
+.item-actions-bottom .live-icon,
+.item-actions-bottom .hook-icon {
   width: 32px;
   height: 32px;
   padding: 0;
@@ -2619,6 +2620,21 @@ label {
 .target-list-editor {
   display: grid;
   gap: 8px;
+}
+
+.hook-icon {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s var(--ease);
+}
+
+.hook-icon:hover,
+.hook-icon.active {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 
 .target-summary-row {

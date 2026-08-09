@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Plus, CaretUp, CaretDown, CaretRight, Gear, X, Lightning, ClockCounterClockwise, Copy } from "@phosphor-icons/react";
+import { Plus, CaretUp, CaretDown, CaretRight, Gear, X, Lightning, ClockCounterClockwise, Copy, GitBranch } from "@phosphor-icons/react";
 import EditorModal from "./EditorModal";
 import ConfirmModal from "./ConfirmModal";
 import TargetPicker from "./TargetPicker";
@@ -8,6 +8,7 @@ import { toast } from "./Toast";
 import { buildItemTargetMap, pickDueLiveItem } from "../../lib/live-sync";
 import {
   categoryBreadcrumbs,
+  duplicateCategoryTree,
   removeCategory,
 } from "../../lib/categories";
 
@@ -101,6 +102,8 @@ export default function SyncListView({ config, onRefresh }) {
   const [syncTargetPicker, setSyncTargetPicker] = useState(null);
   const [targetDraft, setTargetDraft] = useState(null);
   const [liveItemIds, setLiveItemIds] = useState([]);
+  const [hookStates, setHookStates] = useState({});
+  const [hookPendingId, setHookPendingId] = useState(null);
 
   const pollRef = useRef(null);
   const mountedRef = useRef(true);
@@ -195,6 +198,41 @@ export default function SyncListView({ config, onRefresh }) {
     if (categories.some((category) => category.id === currentCategoryId)) return;
     setCurrentCategoryId("");
   }, [categories, currentCategoryId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHookStates() {
+      if (!items.length) return setHookStates({});
+      const params = new URLSearchParams();
+      items.forEach((item) => params.append("itemId", item.id));
+      const response = await fetch(`/api/hooks?${params}`);
+      if (cancelled || !response.ok) return;
+      const data = await response.json();
+      setHookStates(Object.fromEntries((data.hooks || []).map((hook) => [hook.itemId, hook])));
+    }
+    loadHookStates().catch(() => {});
+    return () => { cancelled = true; };
+  }, [items]);
+
+  async function togglePostCommitHook(item) {
+    setHookPendingId(item.id);
+    try {
+      const action = hookStates[item.id]?.installed ? "remove" : "install";
+      const response = await fetch("/api/hooks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: item.id, action }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not update the Git hook.");
+      setHookStates((current) => ({ ...current, [item.id]: data.hook }));
+      toast(action === "install" ? "Post-commit sync enabled." : "Post-commit sync removed.");
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      setHookPendingId(null);
+    }
+  }
 
   async function saveConfig(nextItems, nextCategories = categories) {
     const r = await fetch("/api/config", {
@@ -310,19 +348,9 @@ export default function SyncListView({ config, onRefresh }) {
   }
 
   function cloneCategory(category) {
-    const siblingNames = categories
-      .filter((candidate) =>
-        candidate.projectId === category.projectId &&
-        (candidate.parentId || "") === (category.parentId || ""),
-      )
-      .map((candidate) => candidate.name);
-    const copy = {
-      ...category,
-      id: `c-${Date.now().toString(36)}`,
-      name: cloneName(category.name, siblingNames),
-    };
-    saveConfig(items, [...categories, copy])
-      .then(() => toast(`Cloned "${category.name}".`))
+    const copy = duplicateCategoryTree(categories, items, category.id);
+    saveConfig(copy.items, copy.categories)
+      .then(() => toast(`Cloned "${category.name}" and its contents.`))
       .catch((e) => toast(e.message, "error"));
   }
 
@@ -829,6 +857,7 @@ export default function SyncListView({ config, onRefresh }) {
             const item = entry;
             const project = resolveProject(item.projectId, projects);
             const liveEnabled = liveItemIds.includes(item.id);
+            const hookEnabled = hookStates[item.id]?.installed;
             return (
               <div
                 key={item.id}
@@ -911,6 +940,15 @@ export default function SyncListView({ config, onRefresh }) {
                       }
                     >
                       <Lightning size={14} weight={liveEnabled ? "fill" : "regular"} />
+                    </button>
+                    <button
+                      className={`hook-icon ${hookEnabled ? "active" : ""}`}
+                      onClick={() => togglePostCommitHook(item)}
+                      disabled={hookPendingId === item.id}
+                      title={hookEnabled ? "Remove post-commit sync" : "Add post-commit sync"}
+                      aria-label={hookEnabled ? "Remove post-commit sync" : "Add post-commit sync"}
+                    >
+                      <GitBranch size={14} weight={hookEnabled ? "fill" : "regular"} />
                     </button>
                   </div>
                 </div>

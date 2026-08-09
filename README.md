@@ -66,6 +66,22 @@ npm run installer:mac     # macOS .dmg
 npm run installer:linux   # Linux .AppImage
 ```
 
+## PM2
+
+For a long-running production web process, build once and start the checked-in
+ecosystem file:
+
+```bash
+npm install
+npm run build
+pm2 start ecosystem.config.js --env production
+pm2 save
+pm2 startup
+```
+
+The app listens on port `49173`. The PM2 process keeps the `/api/run` endpoint
+available for optional post-commit sync hooks.
+
 ## Tests
 
 ```bash
