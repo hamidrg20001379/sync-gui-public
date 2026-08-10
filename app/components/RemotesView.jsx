@@ -60,9 +60,8 @@ export default function RemotesView({ config, onBack, onRefresh, activeTerminalR
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         config: {
+          ...config,
           remotes: next,
-          projects: config.projects,
-          items: config.items,
         },
       }),
     });
@@ -90,9 +89,8 @@ export default function RemotesView({ config, onBack, onRefresh, activeTerminalR
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         config: {
+          ...config,
           remotes: next,
-          projects: config.projects,
-          items: config.items,
         },
       }),
     });

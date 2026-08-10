@@ -8,6 +8,8 @@ Sync GUI is a local desktop/web interface for managing file/folder sync between 
 
 Three-tier model stored in a single JSON file (`sync-config.json`):
 
+Set `settings.restrictToChangedFiles` to `true` (or use the **Changed files only** toggle) to copy only source files newer than the destination. Newer and target-only destination files are preserved.
+
 - **Remotes** — SSH or Local connections
 - **Projects** — group name linked to a remote
 - **Sync Items** — flat list of source→destination pairs, each assigned to a project

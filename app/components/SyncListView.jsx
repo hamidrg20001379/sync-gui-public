@@ -234,12 +234,12 @@ export default function SyncListView({ config, onRefresh }) {
     }
   }
 
-  async function saveConfig(nextItems, nextCategories = categories) {
+  async function saveConfig(nextItems, nextCategories = categories, nextSettings = config.settings) {
     const r = await fetch("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        config: { remotes, projects, categories: nextCategories, items: nextItems },
+        config: { remotes, projects, categories: nextCategories, items: nextItems, settings: nextSettings },
       }),
     });
     if (!r.ok) {
@@ -285,6 +285,13 @@ export default function SyncListView({ config, onRefresh }) {
       })),
     });
     setShowForm(true);
+  }
+
+  function setRestrictToChangedFiles(enabled) {
+    saveConfig(items, categories, {
+      ...config.settings,
+      restrictToChangedFiles: enabled,
+    }).catch((error) => toast(error.message, "error"));
   }
 
   function openCategoryEditor(category = null) {
@@ -688,6 +695,14 @@ export default function SyncListView({ config, onRefresh }) {
                 onChange={(e) => setNoDelete(e.target.checked)}
               />
               No-delete
+            </label>
+            <label title="Copy only newer source files; preserve newer and target-only files">
+              <input
+                type="checkbox"
+                checked={Boolean(config.settings?.restrictToChangedFiles)}
+                onChange={(e) => setRestrictToChangedFiles(e.target.checked)}
+              />
+              Changed files only
             </label>
           </div>
           <span className={`status ${status}`}>

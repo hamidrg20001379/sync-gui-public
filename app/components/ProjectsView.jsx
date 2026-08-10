@@ -52,7 +52,7 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        config: { remotes, projects: next, items: config.items },
+        config: { ...config, remotes, projects: next },
       }),
     });
     if (!r.ok) return toast("Failed to save.", "error");
@@ -70,7 +70,7 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        config: { remotes, projects: next, items: config.items },
+        config: { ...config, remotes, projects: next },
       }),
     });
     if (!r.ok) return toast("Failed to delete.", "error");
@@ -93,7 +93,7 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        config: { remotes: nextRemotes, projects, items: config.items },
+        config: { ...config, remotes: nextRemotes, projects },
       }),
     });
     if (!r.ok) return;
