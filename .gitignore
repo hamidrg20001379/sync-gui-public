@@ -15,3 +15,7 @@ vendor/win-tools
 .windsurf
 .claude
 .agents
+
+out/
+src-tauri/target/
+src-tauri/gen/

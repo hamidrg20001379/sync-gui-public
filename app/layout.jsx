@@ -1,4 +1,5 @@
 import './globals.css';
+import TauriBridge from './components/TauriBridge';
 
 export const metadata = {
   title: 'Sync GUI',
@@ -13,7 +14,10 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
-      <body>{children}</body>
+      <body>
+        <TauriBridge />
+        {children}
+      </body>
     </html>
   );
 }
