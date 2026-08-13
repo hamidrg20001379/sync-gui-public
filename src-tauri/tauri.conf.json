@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "Sync GUI",
+  "version": "1.0.0",
+  "identifier": "com.hamidrg.sync-gui",
+  "build": {
+    "beforeDevCommand": "npm run next:dev",
+    "beforeBuildCommand": "npm run next:build",
+    "devUrl": "http://localhost:49173",
+    "frontendDist": "../out"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Sync GUI",
+        "width": 1280,
+        "height": 860
+      }
+    ],
+    "security": {
+      "capabilities": [
+        "default"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "vendor/win-tools/**/*"
+    ],
+    "linux": {
+      "deb": {
+        "depends": [
+          "sshpass"
+        ]
+      }
+    }
+  }
+}

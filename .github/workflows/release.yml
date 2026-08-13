@@ -1,175 +1,55 @@
-name: Release
+name: Release Tauri App
 
 on:
   push:
-    tags: ["v*"]
+    branches:
+      - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 
-permissions:
-  contents: write
-
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  package:
-    name: Package ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+  build-tauri:
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x64
-            os: windows-latest
-            artifact: Sync-GUI-win32-x64
-            asset_paths: |
-              dist/Sync-GUI-win32-x64.zip
-              dist/Sync-GUI-Setup-win32-x64.exe
-          - name: Linux x64
-            os: ubuntu-latest
-            artifact: Sync-GUI-linux-x64
-            asset_paths: |
-              dist/Sync-GUI-linux-x64.tar.gz
-              dist/Sync-GUI-linux-x64.AppImage
-          - name: macOS arm64
-            os: macos-26
-            artifact: Sync-GUI-darwin-arm64
-            asset_paths: |
-              dist/Sync-GUI-darwin-arm64.tar.gz
-              dist/Sync-GUI-darwin-arm64.dmg
-          - name: macOS x64
-            os: macos-26-intel
-            artifact: Sync-GUI-darwin-x64
-            asset_paths: |
-              dist/Sync-GUI-darwin-x64.tar.gz
-              dist/Sync-GUI-darwin-x64.dmg
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
 
-    env:
-      NEXT_TELEMETRY_DISABLED: "1"
-
+    runs-on: ${{ matrix.platform }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: setup node
+        uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: npm
+          node-version: 20
 
-      - name: Cache Electron
-        uses: actions/cache@v4
-        with:
-          path: .electron-cache
-          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            electron-${{ runner.os }}-${{ runner.arch }}-
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Stamp release version
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); pkg.version=process.argv[1]; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');" $version
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev sshpass
 
-      - name: Install Windows sync tools
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
+      - name: install frontend dependencies
+        run: npm install
+
+      - name: build tauri app
+        uses: tauri-apps/tauri-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          install: >-
-            rsync
-            openssh
-            sshpass
-
-      - name: Package portable app
-        env:
-          electron_config_cache: ${{ github.workspace }}/.electron-cache
-        run: npm run dist
-
-      - name: Archive Windows portable app
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Compress-Archive -Path "dist/${{ matrix.artifact }}" -DestinationPath "dist/${{ matrix.artifact }}.zip" -Force
-
-      - name: Install Inno Setup
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
-
-      - name: Package Windows installer
-        if: runner.os == 'Windows'
-        run: npm run installer:win
-
-      - name: Archive portable app
-        if: runner.os != 'Windows'
-        run: tar -czf "dist/${{ matrix.artifact }}.tar.gz" -C dist "${{ matrix.artifact }}"
-
-      - name: Package macOS DMG
-        if: runner.os == 'macOS'
-        run: npm run installer:mac
-
-      - name: Install appimagetool
-        if: runner.os == 'Linux'
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import urllib.request
-
-          with urllib.request.urlopen('https://api.github.com/repos/AppImage/appimagetool/releases/latest') as response:
-              release = json.load(response)
-
-          assets = release.get('assets', [])
-          candidates = [
-              asset['browser_download_url']
-              for asset in assets
-              if asset.get('name', '').endswith('x86_64.AppImage')
-          ]
-          if not candidates:
-              raise SystemExit('Could not find x86_64 appimagetool asset')
-
-          urllib.request.urlretrieve(candidates[0], 'appimagetool')
-          os.chmod('appimagetool', 0o755)
-          PY
-
-      - name: Package Linux AppImage
-        if: runner.os == 'Linux'
-        env:
-          APPIMAGETOOL: ${{ github.workspace }}/appimagetool
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: npm run installer:linux
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.asset_paths }}
-          if-no-files-found: error
-
-      - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $assetText = @'
-          ${{ matrix.asset_paths }}
-          '@
-          $assets = $assetText -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title $tag --generate-notes
-            if ($LASTEXITCODE -ne 0) {
-              gh release view $tag *> $null
-              if ($LASTEXITCODE -ne 0) { exit 1 }
-            }
-          }
-          foreach ($asset in $assets) {
-            gh release upload $tag $asset --clobber
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+          tagName: sync-gui-v__VERSION__
+          releaseName: 'Sync GUI v__VERSION__'
+          releaseBody: 'See the assets to download the application for your OS.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
