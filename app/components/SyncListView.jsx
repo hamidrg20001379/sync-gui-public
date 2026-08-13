@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Plus, CaretUp, CaretDown, CaretRight, Gear, X, Lightning, ClockCounterClockwise, Copy } from "@phosphor-icons/react";
+import { Plus, CaretUp, CaretDown, CaretRight, Gear, X, Lightning, ClockCounterClockwise, Copy, Stop } from "@phosphor-icons/react";
 import EditorModal from "./EditorModal";
 import ConfirmModal from "./ConfirmModal";
 import TargetPicker from "./TargetPicker";
