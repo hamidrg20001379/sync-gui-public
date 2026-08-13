@@ -587,6 +587,18 @@ fn run_bash_process_ctx(
     Ok((code, out_str.trim().to_string()))
 }
 
+fn get_json_id(v: &serde_json::Value) -> Option<String> {
+    if let Some(s) = v.as_str() {
+        Some(s.to_string())
+    } else if let Some(n) = v.as_i64() {
+        Some(n.to_string())
+    } else if let Some(n) = v.as_u64() {
+        Some(n.to_string())
+    } else {
+        None
+    }
+}
+
 #[tauri::command]
 fn start_sync_job(
     state: State<'_, AppState>,
@@ -605,7 +617,7 @@ fn start_sync_job(
     let items_to_sync = if !item_ids.is_empty() {
         if let Some(items) = config.get("items").and_then(|v| v.as_array()) {
             items.iter().filter(|i| {
-                i.get("id").and_then(|v| v.as_str()).map(|id| item_ids.contains(&id.to_string())).unwrap_or(false)
+                i.get("id").and_then(get_json_id).map(|id| item_ids.contains(&id)).unwrap_or(false)
             }).cloned().collect::<Vec<serde_json::Value>>()
         } else {
             Vec::new()
@@ -777,7 +789,7 @@ fn run_sync_internal_ctx(
             }
         }
 
-        let item = items_arr.iter().find(|i| i.get("id").and_then(|v| v.as_str()) == Some(item_id))
+        let item = items_arr.iter().find(|i| i.get("id").and_then(get_json_id).as_deref() == Some(item_id))
             .ok_or_else(|| format!("Item not found: {}", item_id))?;
             
         let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("Unnamed");
