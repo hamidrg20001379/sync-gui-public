@@ -101,6 +101,7 @@ export default function SyncListView({ config, onRefresh }) {
   const [syncTargetPicker, setSyncTargetPicker] = useState(null);
   const [targetDraft, setTargetDraft] = useState(null);
   const [liveItemIds, setLiveItemIds] = useState([]);
+  const [currentJobId, setCurrentJobId] = useState(null);
 
   const pollRef = useRef(null);
   const mountedRef = useRef(true);
@@ -500,6 +501,18 @@ export default function SyncListView({ config, onRefresh }) {
     }
   }
 
+  async function cancelJob() {
+    if (!currentJobId) return;
+    try {
+      const r = await fetch(`/api/run?id=${currentJobId}`, { method: "DELETE" });
+      if (r.ok) {
+        toast("Cancellation requested...");
+      }
+    } catch (e) {
+      toast("Error cancelling job: " + e.message, "error");
+    }
+  }
+
   function doSync(itemIds, direction, targetMap = {}, options = {}) {
     const { liveItemId = null } = options;
     setStatus("running");
@@ -521,14 +534,22 @@ export default function SyncListView({ config, onRefresh }) {
     })
       .then((r) => r.json())
       .then((data) => {
-        if (data.error) {
-          setOutput((o) => o + (data.error || "Failed") + "\n");
+        if (!data || data.error || data.id === undefined || data.id === null) {
+          setOutput((o) => o + (data?.error || "Failed to start job (Invalid response from backend)") + "\n");
           setStatus("failed");
           setSyncingIds([]);
+          setCurrentJobId(null);
           return;
         }
+        setCurrentJobId(data.id);
         setOutput((o) => o + `Job #${data.id} started.\n`);
         pollJob(data.id);
+      })
+      .catch((err) => {
+        setOutput((o) => o + `Error starting sync: ${err.message || err}\n`);
+        setStatus("failed");
+        setSyncingIds([]);
+        setCurrentJobId(null);
       });
   }
 
@@ -561,23 +582,32 @@ export default function SyncListView({ config, onRefresh }) {
   }
 
   function pollJob(id) {
+    if (!id) return;
     pollRef.current = setInterval(async () => {
       if (!mountedRef.current) {
         clearInterval(pollRef.current);
         return;
       }
-      const r = await fetch(`/api/run?id=${id}`);
-      if (!r.ok) return;
-      const job = await r.json();
-      if (job.status !== "running") {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-        setOutput(job.output || "");
-        setStatus(job.status === "succeeded" ? "done" : "failed");
-        setSyncingIds([]);
-        loadHistory();
-        if (job.status === "succeeded") toast("Sync completed.");
-        else toast("Sync failed.", "error");
+      try {
+        const r = await fetch(`/api/run?id=${id}`);
+        if (!r.ok) return;
+        const job = await r.json();
+        if (!job || job.error) return;
+        if (job.status !== "running") {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          setCurrentJobId(null);
+          setOutput(job.output || "");
+          const finalStatus = job.status === "succeeded" ? "done" : job.status === "cancelled" ? "cancelled" : "failed";
+          setStatus(finalStatus);
+          setSyncingIds([]);
+          loadHistory();
+          if (job.status === "succeeded") toast("Sync completed.");
+          else if (job.status === "cancelled") toast("Sync cancelled.", "error");
+          else toast("Sync failed.", "error");
+        }
+      } catch (e) {
+        console.error("Polling error:", e);
       }
     }, 1000);
   }
@@ -666,6 +696,27 @@ export default function SyncListView({ config, onRefresh }) {
             <span className="status-dot" />
             {status === "running" ? `${syncingIds.length} running` : status}
           </span>
+          {status === "running" && currentJobId && (
+            <button
+              onClick={cancelJob}
+              style={{
+                background: "#dc2626",
+                color: "#ffffff",
+                border: "none",
+                padding: "4px 10px",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontWeight: "600",
+                fontSize: "12px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px"
+              }}
+              title="Cancel running sync job"
+            >
+              <Stop size={14} weight="bold" /> Cancel
+            </button>
+          )}
           {items.length > 0 && (
             <>
               <button className="primary" onClick={() => handleSyncAll("up")}>
@@ -941,7 +992,30 @@ export default function SyncListView({ config, onRefresh }) {
         <div className="console-panel">
           <div className="console-head">
             <span>Output</span>
-            <button onClick={() => setOutput("")}>Clear</button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {status === "running" && currentJobId && (
+                <button
+                  onClick={cancelJob}
+                  style={{
+                    background: "#dc2626",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px"
+                  }}
+                  title="Cancel running sync job"
+                >
+                  <Stop size={13} weight="bold" /> Cancel Operation
+                </button>
+              )}
+              <button onClick={() => setOutput("")}>Clear</button>
+            </div>
           </div>
           <pre>{output || "Ready to sync."}</pre>
         </div>

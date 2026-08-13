@@ -1,22 +1,30 @@
 'use client';
 
-if (typeof window !== 'undefined') {
-  // Try to load Tauri invoke. Since this might be executed during ssr compilation or when running outside Tauri,
-  // we do a try-catch to keep it safe.
-  let invoke;
+function getInvoke() {
+  if (typeof window === 'undefined') return null;
+  if (window.__TAURI__?.core?.invoke) return window.__TAURI__.core.invoke;
+  if (window.__TAURI_INTERNALS__?.invoke) return window.__TAURI_INTERNALS__.invoke;
   try {
-    invoke = require('@tauri-apps/api/core').invoke;
+    const core = require('@tauri-apps/api/core');
+    if (core && core.invoke) return core.invoke;
   } catch (e) {
-    console.warn('Tauri API core load failed. Probably not running inside Tauri.', e);
+    // ignore
   }
+  return null;
+}
 
-  if (invoke) {
-    const originalFetch = window.fetch;
+if (typeof window !== 'undefined') {
+  const originalFetch = window.fetch;
 
-    window.fetch = async (url, options = {}) => {
-      const urlStr = typeof url === 'string' ? url : (url.url || '');
-      
-      if (urlStr.startsWith('/api/')) {
+  window.fetch = async (url, options = {}) => {
+    const urlStr = typeof url === 'string' ? url : (url.url || '');
+    
+    if (urlStr.startsWith('/api/')) {
+      const invoke = getInvoke();
+      if (!invoke) {
+        console.warn('Tauri invoke not found when calling API:', urlStr);
+        return originalFetch(url, options);
+      }
         const method = (options.method || 'GET').toUpperCase();
         let body = {};
         if (options.body) {
@@ -105,9 +113,15 @@ if (typeof window !== 'undefined') {
 
           if (urlStr.startsWith('/api/run')) {
             const id = query.id;
-            if (method === 'GET' && id) {
+            if (method === 'DELETE' && id) {
+              const cancelled = await invoke('cancel_sync_job', { id });
+              return new Response(JSON.stringify({ ok: cancelled }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            } else if (method === 'GET' && id) {
               const job = await invoke('get_sync_job', { id });
-              return new Response(JSON.stringify({ job }), {
+              return new Response(JSON.stringify(job), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json' }
               });
@@ -118,7 +132,7 @@ if (typeof window !== 'undefined') {
                 noDelete: !!body.noDelete,
                 itemTargets: body.itemTargets || {},
               });
-              return new Response(JSON.stringify({ ok: true, job }), {
+              return new Response(JSON.stringify(job), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json' }
               });
@@ -173,7 +187,6 @@ if (typeof window !== 'undefined') {
       
       return originalFetch(url, options);
     };
-  }
 }
 
 export default function TauriBridge() {

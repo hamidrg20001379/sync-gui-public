@@ -63,6 +63,8 @@ struct AppState {
     jobs: Arc<Mutex<Vec<SyncJob>>>,
     terminals: Arc<Mutex<HashMap<String, TerminalSession>>>,
     next_job_id: Arc<Mutex<u64>>,
+    active_pids: Arc<Mutex<HashMap<String, u32>>>,
+    cancel_flags: Arc<Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>>,
 }
 
 // =========================================================================
@@ -510,6 +512,22 @@ fn check_ssh(remote: &serde_json::Value) -> Result<(bool, String), String> {
 // =========================================================================
 
 fn run_bash_process(command_str: &str, password: &str) -> Result<(i32, String), String> {
+    run_bash_process_ctx(command_str, password, None, None, None)
+}
+
+fn run_bash_process_ctx(
+    command_str: &str,
+    password: &str,
+    job_id: Option<&str>,
+    active_pids: Option<&Arc<Mutex<HashMap<String, u32>>>>,
+    cancel_flag: Option<&Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<(i32, String), String> {
+    if let Some(flag) = cancel_flag {
+        if flag.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok((130, "⛔ [Cancelled] Operation cancelled before execution.".to_string()));
+        }
+    }
+
     let bash_path = env::var("SYNC_GUI_BASH")
         .unwrap_or_else(|_| if cfg!(target_os = "windows") { "C:\\msys64\\usr\\bin\\bash.exe".to_string() } else { "bash".to_string() });
 
@@ -535,7 +553,25 @@ fn run_bash_process(command_str: &str, password: &str) -> Result<(i32, String), 
     }
 
     let child = cmd.spawn().map_err(|e| format!("Failed to spawn bash: {}", e))?;
-    let output = child.wait_with_output().map_err(|e| format!("Process error: {}", e))?;
+    let pid = child.id();
+
+    if let (Some(jid), Some(pids)) = (job_id, active_pids) {
+        pids.lock().unwrap().insert(jid.to_string(), pid);
+    }
+
+    let output_res = child.wait_with_output();
+
+    if let (Some(jid), Some(pids)) = (job_id, active_pids) {
+        pids.lock().unwrap().remove(jid);
+    }
+
+    if let Some(flag) = cancel_flag {
+        if flag.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok((130, "⛔ [Cancelled] Operation cancelled by user.".to_string()));
+        }
+    }
+
+    let output = output_res.map_err(|e| format!("Process error: {}", e))?;
 
     let mut out_str = String::from_utf8_lossy(&output.stdout).into_owned();
     let err_str = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -600,25 +636,41 @@ fn start_sync_job(
         finished_at: None,
     };
 
+    let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    state.cancel_flags.lock().unwrap().insert(job_id.clone(), cancel_flag.clone());
+
     state.jobs.lock().unwrap().insert(0, job.clone());
 
     // Spawn thread to execute sync
     let jobs_mutex = Arc::clone(&state.jobs);
+    let pids_mutex = Arc::clone(&state.active_pids);
+    let cancel_flags_mutex = Arc::clone(&state.cancel_flags);
     let job_id_clone = job_id.clone();
     
     std::thread::spawn(move || {
-        let result = run_sync_internal(&config, &direction, dry_run, no_delete, &item_targets);
+        let result = run_sync_internal_ctx(&config, &direction, dry_run, no_delete, &item_targets, Some(&job_id_clone), Some(&pids_mutex), Some(&cancel_flag));
+        
+        // Clean up tracking maps
+        pids_mutex.lock().unwrap().remove(&job_id_clone);
+        cancel_flags_mutex.lock().unwrap().remove(&job_id_clone);
+
         let mut jobs = jobs_mutex.lock().unwrap();
         if let Some(j) = jobs.iter_mut().find(|j| j.id == job_id_clone) {
             match result {
                 Ok((code, output)) => {
                     j.exit_code = Some(code);
                     j.output = output;
-                    j.status = if code == 0 { "succeeded".to_string() } else { "failed".to_string() };
+                    j.status = if code == 0 {
+                        "succeeded".to_string()
+                    } else if code == 130 {
+                        "cancelled".to_string()
+                    } else {
+                        "failed".to_string()
+                    };
                 }
                 Err(e) => {
                     j.exit_code = Some(1);
-                    j.output = e;
+                    j.output = format!("❌ [Error] {}", e);
                     j.status = "failed".to_string();
                 }
             }
@@ -627,6 +679,44 @@ fn start_sync_job(
     });
 
     Ok(job)
+}
+
+#[tauri::command]
+fn cancel_sync_job(state: State<'_, AppState>, id: String) -> Result<bool, String> {
+    if let Some(flag) = state.cancel_flags.lock().unwrap().get(&id) {
+        flag.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    
+    let pid_opt = state.active_pids.lock().unwrap().remove(&id);
+    if let Some(pid) = pid_opt {
+        kill_process_by_pid(pid);
+    }
+
+    let mut jobs = state.jobs.lock().unwrap();
+    if let Some(j) = jobs.iter_mut().find(|j| j.id == id) {
+        if j.status == "running" {
+            j.status = "cancelled".to_string();
+            j.exit_code = Some(130);
+            if !j.output.is_empty() && !j.output.ends_with('\n') {
+                j.output.push('\n');
+            }
+            j.output.push_str("⛔ [Cancelled] Sync job was cancelled by user.\n");
+            j.finished_at = Some(Utc::now().to_rfc3339());
+        }
+    }
+    Ok(true)
+}
+
+fn kill_process_by_pid(pid: u32) {
+    if cfg!(target_os = "windows") {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .output();
+    } else {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output();
+    }
 }
 
 #[tauri::command]
@@ -649,12 +739,26 @@ fn clear_sync_history(state: State<'_, AppState>) -> Result<usize, String> {
     Ok(cleared)
 }
 
+#[allow(dead_code)]
 fn run_sync_internal(
     config: &serde_json::Value,
     direction: &str,
     dry_run: bool,
     no_delete: bool,
     item_targets: &serde_json::Value,
+) -> Result<(i32, String), String> {
+    run_sync_internal_ctx(config, direction, dry_run, no_delete, item_targets, None, None, None)
+}
+
+fn run_sync_internal_ctx(
+    config: &serde_json::Value,
+    direction: &str,
+    dry_run: bool,
+    no_delete: bool,
+    item_targets: &serde_json::Value,
+    job_id: Option<&str>,
+    active_pids: Option<&Arc<Mutex<HashMap<String, u32>>>>,
+    cancel_flag: Option<&Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<(i32, String), String> {
     let items_arr = config.get("items").and_then(|v| v.as_array()).ok_or("No items config.")?;
     let remotes_arr = config.get("remotes").and_then(|v| v.as_array()).ok_or("No remotes config.")?;
@@ -666,6 +770,13 @@ fn run_sync_internal(
     let mut final_code = 0;
 
     for (item_id, targets_val) in item_targets_obj {
+        if let Some(flag) = cancel_flag {
+            if flag.load(std::sync::atomic::Ordering::SeqCst) {
+                chunks.push("⛔ [Cancelled] Sync job was cancelled by user.".to_string());
+                return Ok((130, chunks.join("\n")));
+            }
+        }
+
         let item = items_arr.iter().find(|i| i.get("id").and_then(|v| v.as_str()) == Some(item_id))
             .ok_or_else(|| format!("Item not found: {}", item_id))?;
             
@@ -712,6 +823,13 @@ fn run_sync_internal(
                 }
 
                 for remote in remotes {
+                    if let Some(flag) = cancel_flag {
+                        if flag.load(std::sync::atomic::Ordering::SeqCst) {
+                            chunks.push("⛔ [Cancelled] Sync job was cancelled by user.".to_string());
+                            return Ok((130, chunks.join("\n")));
+                        }
+                    }
+
                     let target_name = target.get("name").and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| format!("target {}", ti));
@@ -720,12 +838,18 @@ fn run_sync_internal(
                     
                     chunks.push(format!("[{} ? {}]", name, label));
                     let (code, output) = if remote.get("kind").and_then(|v| v.as_str()) == Some("ssh") {
-                        sync_ssh(item, target, &remote, direction, dry_run, no_delete)?
+                        sync_ssh(item, target, &remote, direction, dry_run, no_delete, job_id, active_pids, cancel_flag)?
                     } else {
                         sync_local(item, target, &remote, direction, dry_run, no_delete)?
                     };
                     if !output.is_empty() {
                         chunks.push(output);
+                    } else if code == 0 {
+                        chunks.push("Already up to date (no files changed).".to_string());
+                    } else if code == 130 {
+                        chunks.push("⛔ [Cancelled] Operation cancelled by user.".to_string());
+                    } else {
+                        chunks.push("Sync failed with no output.".to_string());
                     }
                     if code != 0 && final_code == 0 {
                         final_code = code;
@@ -764,6 +888,13 @@ fn run_sync_internal(
                 }
 
                 for remote in remotes {
+                    if let Some(flag) = cancel_flag {
+                        if flag.load(std::sync::atomic::Ordering::SeqCst) {
+                            chunks.push("⛔ [Cancelled] Sync job was cancelled by user.".to_string());
+                            return Ok((130, chunks.join("\n")));
+                        }
+                    }
+
                     let target_name = target.get("name").and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| format!("target {}", ti));
@@ -772,12 +903,18 @@ fn run_sync_internal(
                     
                     chunks.push(format!("[{} ? {}]", name, label));
                     let (code, output) = if remote.get("kind").and_then(|v| v.as_str()) == Some("ssh") {
-                        sync_ssh(item, target, &remote, direction, dry_run, no_delete)?
+                        sync_ssh(item, target, &remote, direction, dry_run, no_delete, job_id, active_pids, cancel_flag)?
                     } else {
                         sync_local(item, target, &remote, direction, dry_run, no_delete)?
                     };
                     if !output.is_empty() {
                         chunks.push(output);
+                    } else if code == 0 {
+                        chunks.push("Already up to date (no files changed).".to_string());
+                    } else if code == 130 {
+                        chunks.push("⛔ [Cancelled] Operation cancelled by user.".to_string());
+                    } else {
+                        chunks.push("Sync failed with no output.".to_string());
                     }
                     if code != 0 && final_code == 0 {
                         final_code = code;
@@ -1182,6 +1319,9 @@ fn sync_ssh(
     direction: &str,
     dry_run: bool,
     no_delete: bool,
+    job_id: Option<&str>,
+    active_pids: Option<&Arc<Mutex<HashMap<String, u32>>>>,
+    cancel_flag: Option<&Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<(i32, String), String> {
     let values = target_token_values(remote, target);
     
@@ -1206,6 +1346,10 @@ fn sync_ssh(
     let password = remote.get("password").and_then(|v| v.as_str()).unwrap_or("");
     let port = remote.get("port").and_then(|v| v.as_i64()).unwrap_or(22);
     
+    if username.is_empty() || host.is_empty() {
+        return Ok((1, format!("❌ [Error] Remote SSH configuration incomplete: username=\"{}\", host=\"{}\".", username, host)));
+    }
+
     let remote_spec = format!("{}@{}:{}", username, host, remote_path);
     let ssh = format!(
         "sshpass -e ssh -p {} -o StrictHostKeyChecking=accept-new{}",
@@ -1274,7 +1418,7 @@ fn sync_ssh(
     }
     
     let full_command = commands.join("\n");
-    run_bash_process(&full_command, password)
+    run_bash_process_ctx(&full_command, password, job_id, active_pids, cancel_flag)
 }
 
 fn target_remote_ids(target: &serde_json::Value) -> Vec<String> {
@@ -1305,12 +1449,7 @@ fn expand_path_pairs(
     let dst_resolved = apply_known_path_tokens(dst_pattern, initial_values);
     
     if !has_path_tokens(&src_resolved) && !has_path_tokens(&dst_resolved) {
-        let p = Path::new(&src_resolved);
-        if p.exists() {
-            return Ok(vec![PathPair { src: src_resolved, dst: dst_resolved }]);
-        } else {
-            return Ok(vec![]);
-        }
+        return Ok(vec![PathPair { src: src_resolved, dst: dst_resolved }]);
     }
     
     if !has_path_tokens(&src_resolved) {
@@ -2334,6 +2473,8 @@ fn main() {
         jobs: Arc::new(Mutex::new(Vec::new())),
         terminals: Arc::new(Mutex::new(HashMap::new())),
         next_job_id: Arc::new(Mutex::new(1)),
+        active_pids: Arc::new(Mutex::new(HashMap::new())),
+        cancel_flags: Arc::new(Mutex::new(HashMap::new())),
     };
 
     tauri::Builder::default()
@@ -2348,6 +2489,7 @@ fn main() {
             check_dependencies,
             check_remote_connection,
             start_sync_job,
+            cancel_sync_job,
             get_sync_history,
             get_sync_job,
             clear_sync_history,
