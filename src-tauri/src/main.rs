@@ -427,8 +427,8 @@ fn check_dependencies() -> Result<serde_json::Value, String> {
     } else {
         // Unix platforms
         for key in deps.keys().cloned().collect::<Vec<String>>() {
-            let output = std::process::Command::new("command")
-                .args(["-v", &key])
+            let output = std::process::Command::new("sh")
+                .args(["-c", &format!("command -v {}", key)])
                 .output();
             deps.insert(key, output.map(|o| o.status.success()).unwrap_or(false));
         }

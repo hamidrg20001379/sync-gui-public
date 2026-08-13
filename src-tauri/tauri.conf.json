@@ -39,7 +39,9 @@
     "linux": {
       "deb": {
         "depends": [
-          "sshpass"
+          "rsync",
+          "sshpass",
+          "openssh-client"
         ]
       }
     }
