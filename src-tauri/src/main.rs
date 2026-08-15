@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command as TokioCommand;
 
