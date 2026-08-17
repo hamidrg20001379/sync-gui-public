@@ -2110,6 +2110,18 @@ label {
   border-color: var(--accent);
 }
 
+.item-actions .card-btn-sync-up:hover {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.item-actions .card-btn-sync-down:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .item-footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);

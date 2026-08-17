@@ -81,6 +81,22 @@ function cloneName(name, existingNames) {
   }
 }
 
+function categoryItemIds(categories, items, categoryId) {
+  const descendants = new Set([categoryId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const category of categories) {
+      if (descendants.has(category.id) || !descendants.has(category.parentId || "")) continue;
+      descendants.add(category.id);
+      changed = true;
+    }
+  }
+  return items
+    .filter((item) => descendants.has(item.categoryId || ""))
+    .map((item) => item.id);
+}
+
 export default function SyncListView({ config, onRefresh }) {
   const { items = [], projects = [], remotes = [], categories = [] } = config;
   const [search, setSearch] = useState("");
@@ -359,6 +375,28 @@ export default function SyncListView({ config, onRefresh }) {
     saveConfig(copy.items, copy.categories)
       .then(() => toast(`Cloned "${category.name}" and its contents.`))
       .catch((e) => toast(e.message, "error"));
+  }
+
+  function syncCategory(category, direction) {
+    const ids = new Set(categoryItemIds(categories, items, category.id));
+    const categoryItems = items.filter((item) => ids.has(item.id));
+    if (!categoryItems.length) {
+      toast("This category has no sync items.", "error");
+      return;
+    }
+    const targetMap = Object.fromEntries(
+      categoryItems
+        .filter((item) => item.targets?.length)
+        .map((item) => [
+          item.id,
+          direction === "up" ? item.targets.map((_, index) => index) : [0],
+        ]),
+    );
+    if (!Object.keys(targetMap).length) {
+      toast("No sync items in this category have targets.", "error");
+      return;
+    }
+    doSync(Object.keys(targetMap), direction, targetMap);
   }
 
   function cloneItem(item) {
@@ -820,6 +858,28 @@ export default function SyncListView({ config, onRefresh }) {
                         aria-label="Add sync item here"
                       >
                         <Plus size={14} />
+                      </button>
+                      <button
+                        className="card-btn card-btn-sync-up"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          syncCategory(entry, "up");
+                        }}
+                        title="Sync category up"
+                        aria-label="Sync category up"
+                      >
+                        <CaretUp size={14} weight="bold" />
+                      </button>
+                      <button
+                        className="card-btn card-btn-sync-down"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          syncCategory(entry, "down");
+                        }}
+                        title="Sync category down"
+                        aria-label="Sync category down"
+                      >
+                        <CaretDown size={14} weight="bold" />
                       </button>
                       <button
                         className="card-btn card-btn-copy"
