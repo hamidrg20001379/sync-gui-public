@@ -1432,7 +1432,7 @@ export default function SyncListView({ config, onRefresh }) {
       {confirmCategoryDelete && (
         <ConfirmModal
           title="Delete Category"
-          message={`Delete "${confirmCategoryDelete.name}"? Its direct items and subcategories will move up one level.`}
+          message={`Delete "${confirmCategoryDelete.name}" and all its contents? This cannot be undone.`}
           confirmLabel="Delete"
           onConfirm={doRemoveCategory}
           onCancel={() => setConfirmCategoryDelete(null)}

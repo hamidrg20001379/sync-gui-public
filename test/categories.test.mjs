@@ -29,10 +29,19 @@ test('categoryBreadcrumbs builds the path to a nested category', () => {
   assert.deepEqual(categoryBreadcrumbs(categories, 'b').map(category => category.id), ['a', 'b']);
 });
 
-test('removing a category moves its direct contents to its parent', () => {
-  const result = removeCategory(categories, items, 'a');
-  assert.equal(result.categories.find(category => category.id === 'b').parentId, '');
-  assert.equal(result.items.find(item => item.id === 'nested').categoryId, '');
+test('removing a category removes its full subtree and items', () => {
+  const sourceCategories = [
+    ...categories,
+    { id: 'c', name: 'C', projectId: 'p', parentId: 'b' }
+  ];
+  const sourceItems = [
+    ...items,
+    { id: 'deep', projectId: 'p', categoryId: 'c' }
+  ];
+  const result = removeCategory(sourceCategories, sourceItems, 'a');
+
+  assert.deepEqual(result.categories.map(category => category.id), ['other']);
+  assert.deepEqual(result.items.map(item => item.id), ['root']);
 });
 
 test('duplicating a category copies its full subtree and items', () => {
