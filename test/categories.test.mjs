@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   categoryBreadcrumbs,
+  categoryPathVariables,
   duplicateCategoryTree,
   removeCategory,
   visibleCategoryContents
@@ -42,6 +43,22 @@ test('removing a category removes its full subtree and items', () => {
 
   assert.deepEqual(result.categories.map(category => category.id), ['other']);
   assert.deepEqual(result.items.map(item => item.id), ['root']);
+});
+
+test('categoryPathVariables inherits and lets child categories override base paths', () => {
+  const source = [
+    { id: 'a', parentId: '', base_path: '/root', target_base_path: '/remote-root' },
+    { id: 'b', parentId: 'a' },
+    { id: 'c', parentId: 'b', base_path: '/child', target_base_path: '/remote-child' },
+  ];
+  assert.deepEqual(categoryPathVariables(source, 'b'), {
+    BASE_PATH: '/root',
+    TARGET_BASE_PATH: '/remote-root'
+  });
+  assert.deepEqual(categoryPathVariables(source, 'c'), {
+    BASE_PATH: '/child',
+    TARGET_BASE_PATH: '/remote-child'
+  });
 });
 
 test('duplicating a category copies its full subtree and items', () => {

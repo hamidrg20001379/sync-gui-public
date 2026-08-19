@@ -8,6 +8,7 @@ import { toast } from "./Toast";
 import { buildItemTargetMap, pickDueLiveItem } from "../../lib/live-sync";
 import {
   categoryBreadcrumbs,
+  categoryPathVariables,
   duplicateCategoryTree,
   removeCategory,
 } from "../../lib/categories";
@@ -79,6 +80,16 @@ function cloneName(name, existingNames) {
     const candidate = `${base} ${index}`;
     if (!existingNames.includes(candidate)) return candidate;
   }
+}
+
+function pathTokenTitle(value, categoryValues) {
+  const names = [...String(value || "").matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)]
+    .map((match) => match[1])
+    .filter((name, index, all) => all.indexOf(name) === index);
+  if (!names.length) return undefined;
+  return names
+    .map((name) => `${name}: ${categoryValues[name] ?? "(not set)"}`)
+    .join("\n");
 }
 
 function categoryItemIds(categories, items, categoryId) {
@@ -317,6 +328,7 @@ export default function SyncListView({ config, onRefresh }) {
         : {
             id: "",
             name: "",
+            base_path: "",
             projectId: projectFilter,
             parentId: currentCategoryId,
           },
@@ -1159,6 +1171,10 @@ export default function SyncListView({ config, onRefresh }) {
                 onChange={(e) =>
                   setEditing({ ...editing, source: e.target.value })
                 }
+                title={pathTokenTitle(
+                  editing.source,
+                  categoryPathVariables(categories, editing.categoryId),
+                )}
                 placeholder="/home/user/project/dist"
               />
             </label>
@@ -1315,6 +1331,10 @@ export default function SyncListView({ config, onRefresh }) {
                 className="target-dest"
                 value={targetDraft.target.dest || ""}
                 onChange={(e) => updateTargetDraft({ dest: e.target.value })}
+                title={pathTokenTitle(
+                  targetDraft.target.dest,
+                  categoryPathVariables(categories, editing.categoryId),
+                )}
                 placeholder="/remote/path"
               />
             </label>
@@ -1364,6 +1384,28 @@ export default function SyncListView({ config, onRefresh }) {
                 }
                 placeholder="e.g. Client sites"
               />
+            </label>
+            <label>
+              Base path (optional)
+              <input
+                value={categoryDraft.base_path || ""}
+                onChange={(e) =>
+                  setCategoryDraft({ ...categoryDraft, base_path: e.target.value })
+                }
+                placeholder="/home/user/project"
+              />
+              <small>Available to items in this category and its children as {"{BASE_PATH}"}.</small>
+            </label>
+            <label>
+              Target base path (optional)
+              <input
+                value={categoryDraft.target_base_path || ""}
+                onChange={(e) =>
+                  setCategoryDraft({ ...categoryDraft, target_base_path: e.target.value })
+                }
+                placeholder="/remote/project"
+              />
+              <small>Available to items in this category and its children as {"{TARGET_BASE_PATH}"}.</small>
             </label>
             <label>
               Project
