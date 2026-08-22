@@ -24,6 +24,19 @@ test('SSH terminal command uses sshpass env without inlining password', async ()
   assert.equal(spec.env.SSHPASS, 'secret value');
 });
 
+test('SSH terminal command starts in the configured default path', async () => {
+  const { terminalCommand } = await import(`../lib/terminal.js?ssh-path=${Date.now()}`);
+  const spec = await terminalCommand({
+    kind: 'ssh',
+    host: 'example.com',
+    username: 'deploy',
+    defaultPath: "/var/www/My App"
+  });
+  const command = spec.args.join('\n');
+
+  assert.match(command, /cd -- .*\/var\/www\/My App.*&&/);
+});
+
 test('local terminal command opens at the remote root', async () => {
   const root = await mkdtemp(join(tmpdir(), 'sync-gui-local-terminal-'));
   const { terminalCommand } = await import(`../lib/terminal.js?local=${Date.now()}`);

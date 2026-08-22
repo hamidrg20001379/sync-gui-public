@@ -17,6 +17,7 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
   const [newRemote, setNewRemote] = useState({
     name: "",
     kind: "ssh",
+    defaultPath: "",
     root: "",
     host: "",
     port: 22,
@@ -102,6 +103,7 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
     setNewRemote({
       name: "",
       kind: "ssh",
+      defaultPath: "",
       root: "",
       host: "",
       port: 22,
@@ -327,6 +329,16 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
                     />
                   </label>
                 )}
+                <label>
+                  Default terminal path
+                  <input
+                    value={newRemote.defaultPath || ""}
+                    onChange={(e) =>
+                      setNewRemote({ ...newRemote, defaultPath: e.target.value })
+                    }
+                    placeholder={newRemote.kind === "ssh" ? "/var/www/app" : "Optional override"}
+                  />
+                </label>
                 <button
                   className="primary"
                   onClick={createRemoteAndUse}

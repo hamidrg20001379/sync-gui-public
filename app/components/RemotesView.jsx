@@ -10,6 +10,7 @@ function blankRemote() {
     id: "",
     name: "",
     kind: "ssh",
+    defaultPath: "",
     root: "",
     host: "",
     port: 22,
@@ -322,6 +323,16 @@ export default function RemotesView({ config, onBack, onRefresh, activeTerminalR
                 />
               </label>
             )}
+            <label>
+              Default terminal path
+              <input
+                value={editing.defaultPath || ""}
+                onChange={(e) =>
+                  setEditing({ ...editing, defaultPath: e.target.value })
+                }
+                placeholder={editing.kind === "ssh" ? "/var/www/app" : "Optional override"}
+              />
+            </label>
           </div>
         </EditorModal>
       )}
