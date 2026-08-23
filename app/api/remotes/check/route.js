@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { readConfig } from '../../../../lib/config.js';
+import { prepareSshAuth, sshInvocation } from '../../../../lib/ssh.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,16 +27,16 @@ export async function POST(request) {
   }
 }
 
-function checkSsh(remote) {
-  return new Promise(resolve => {
-    if (!remote.host || !remote.username) {
-      resolve({ ok: false, error: 'SSH remote needs host and username.' });
-      return;
-    }
+async function checkSsh(remote) {
+  if (!remote.host || !remote.username) {
+    return { ok: false, error: 'SSH remote needs host and username.' };
+  }
 
+  const auth = await prepareSshAuth(remote.password);
+  return new Promise(resolve => {
     const bash = process.env.SYNC_GUI_BASH || (process.platform === 'win32' ? 'C:\\msys64\\usr\\bin\\bash.exe' : 'bash');
     const ssh = [
-      'sshpass -e ssh',
+      sshInvocation(Boolean(remote.password)),
       `-p ${shq(String(remote.port || 22))}`,
       '-o BatchMode=no',
       '-o ConnectTimeout=5',
@@ -47,17 +48,19 @@ function checkSsh(remote) {
 
     const child = spawn(bash, ['-lc', `PATH=/usr/bin:$PATH\n${ssh}`], {
       cwd: process.cwd(),
-      env: { ...process.env, SSHPASS: remote.password || '' },
+      env: { ...process.env, ...auth.env, SSHPASS: remote.password || '' },
       windowsHide: true,
     });
 
     let output = '';
     child.stdout.on('data', d => output += d.toString());
     child.stderr.on('data', d => output += d.toString());
-    child.on('error', error => resolve({ ok: false, error: error.message }));
+    child.on('error', error => auth.cleanup().finally(() => resolve({ ok: false, error: error.message })));
     child.on('close', code => {
-      if (code === 0 && output.includes('ok')) resolve({ ok: true, message: 'SSH connection works.' });
-      else resolve({ ok: false, error: output.trim() || `SSH exited with code ${code ?? 1}.` });
+      const result = code === 0 && output.includes('ok')
+        ? { ok: true, message: 'SSH connection works.' }
+        : { ok: false, error: output.trim() || `SSH exited with code ${code ?? 1}.` };
+      auth.cleanup().finally(() => resolve(result));
     });
   });
 }
