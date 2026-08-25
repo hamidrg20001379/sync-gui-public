@@ -30,13 +30,14 @@ test('Windows OpenSSH fallback uses a temporary askpass helper', async () => {
 
   assert.doesNotMatch(sshInvocation(true), /sshpass/);
   const auth = await prepareSshAuth('secret value');
+  const askpassPath = auth.env.SSH_ASKPASS.replace(/^\/([a-z])\//i, '$1:/').replace(/\//g, '\\');
   try {
     assert.match(auth.env.SSH_ASKPASS, /askpass\.cmd$/);
-    assert.match(await readFile(auth.env.SSH_ASKPASS, 'utf8'), /SSHPASS/);
+    assert.match(await readFile(askpassPath, 'utf8'), /SSHPASS/);
   } finally {
     await auth.cleanup();
   }
-  await assert.rejects(access(auth.env.SSH_ASKPASS));
+  await assert.rejects(access(askpassPath));
 });
 
 test('SSH terminal command starts in the configured default path', async () => {
