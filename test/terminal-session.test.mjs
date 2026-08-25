@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 test('SSH terminal command uses password auth without inlining password', async () => {
@@ -16,7 +16,7 @@ test('SSH terminal command uses password auth without inlining password', async 
   });
   const command = spec.args.join('\n');
 
-  assert.match(command, /sshpass -e |OpenSSH\/ssh\.exe/);
+  assert.match(command, /sshpass -e |OpenSSH\/ssh\.exe|\nssh /);
   assert.match(command, /-tt/);
   assert.match(command, /-p '2200'/);
   assert.match(command, /'deploy@example\.com'/);
@@ -30,14 +30,39 @@ test('Windows OpenSSH fallback uses a temporary askpass helper', async () => {
 
   assert.doesNotMatch(sshInvocation(true), /sshpass/);
   const auth = await prepareSshAuth('secret value');
-  const askpassPath = auth.env.SSH_ASKPASS.replace(/^\/([a-z])\//i, '$1:/').replace(/\//g, '\\');
+  const msysRoot = dirname(dirname(dirname(auth.env.SSH_ASKPASS)));
+  const askpassPath = join(msysRoot, 'tmp', 'sync-gui-askpass.sh');
   try {
-    assert.match(auth.env.SSH_ASKPASS, /askpass\.cmd$/);
+    assert.match(auth.env.SSH_ASKPASS, /bash\.exe$/i);
     assert.match(await readFile(askpassPath, 'utf8'), /SSHPASS/);
   } finally {
     await auth.cleanup();
   }
-  await assert.rejects(access(askpassPath));
+  assert.equal(auth.env.BASH_ENV, undefined);
+});
+
+test('native Windows OpenSSH receives a native askpass path', async () => {
+  if (process.platform !== 'win32') return;
+
+  const previous = process.env.SYNC_GUI_SSH;
+  const previousBash = process.env.SYNC_GUI_BASH;
+  process.env.SYNC_GUI_SSH = 'C:\\Windows\\System32\\OpenSSH\\ssh.exe';
+  process.env.SYNC_GUI_BASH = join(process.cwd(), 'vendor', 'win-tools', 'usr', 'bin', 'bash.exe');
+  try {
+    const { prepareSshAuth } = await import(`../lib/ssh.js?native-askpass=${Date.now()}`);
+    const auth = await prepareSshAuth('secret value');
+    try {
+      assert.match(auth.env.SSH_ASKPASS, /bash\.exe$/i);
+      assert.equal(auth.env.BASH_ENV, undefined);
+    } finally {
+      await auth.cleanup();
+    }
+  } finally {
+    if (previous === undefined) delete process.env.SYNC_GUI_SSH;
+    else process.env.SYNC_GUI_SSH = previous;
+    if (previousBash === undefined) delete process.env.SYNC_GUI_BASH;
+    else process.env.SYNC_GUI_BASH = previousBash;
+  }
 });
 
 test('SSH terminal command starts in the configured default path', async () => {

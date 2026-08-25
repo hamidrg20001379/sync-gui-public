@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { readConfig } from '../../../../lib/config.js';
-import { prepareSshAuth, sshInvocation } from '../../../../lib/ssh.js';
+import { prepareSshAuth, sshInvocation, sshShellPathPrefix } from '../../../../lib/ssh.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +46,7 @@ async function checkSsh(remote) {
       shq('printf ok')
     ].filter(Boolean).join(' ');
 
-    const child = spawn(bash, ['-lc', `PATH=/usr/bin:$PATH\n${ssh}`], {
+    const child = spawn(bash, ['-lc', `${sshShellPathPrefix()}\n${ssh}`], {
       cwd: process.cwd(),
       env: { ...process.env, ...auth.env, SSHPASS: remote.password || '' },
       windowsHide: true,
