@@ -4,6 +4,8 @@ import { X } from '@phosphor-icons/react';
 export default function TargetPicker({ item, remotes, direction, onStart, onClose }) {
   const targets = item.targets || [];
   const allIndices = targets.map((_, i) => i);
+  const checking = direction === 'check';
+  const selectingMany = direction === 'up' || checking;
 
   function resolveLabel(target) {
     const remoteIds = target.remoteIds?.length ? target.remoteIds : [target.remoteId].filter(Boolean);
@@ -15,7 +17,7 @@ export default function TargetPicker({ item, remotes, direction, onStart, onClos
   function handleForm(e) {
     e.preventDefault();
     const data = new FormData(e.target);
-    const selected = direction === 'up'
+    const selected = selectingMany
       ? allIndices.filter(i => data.get(`t${i}`) === 'on')
       : [parseInt(data.get('target'))];
     if (!selected.length) return;
@@ -27,21 +29,22 @@ export default function TargetPicker({ item, remotes, direction, onStart, onClos
       <div className="modal target-picker" onClick={e => e.stopPropagation()}
         onKeyDown={e => e.key === 'Escape' && onClose()} tabIndex={-1}>
         <header>
-          <h2>{direction === 'up' ? 'Upload targets' : 'Download target'}</h2>
+          <h2>{checking ? 'Check upload safety' : direction === 'up' ? 'Upload targets' : 'Download target'}</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
         </header>
         <form onSubmit={handleForm}>
           <div className="modal-body">
             <p className="tp-item-name">{item.name}</p>
-            {direction === 'up' && <p className="tp-hint">Select targets to sync <strong>to</strong>:</p>}
+            {checking && <p className="tp-hint">Select targets to compare before uploading:</p>}
+            {direction === 'up' && !checking && <p className="tp-hint">Select targets to sync <strong>to</strong>:</p>}
             {direction === 'down' && <p className="tp-hint">Select which target to sync <strong>from</strong>:</p>}
 
             {!targets.length && <p className="empty-state-sm">No targets configured.</p>}
 
             <div className="tp-list">
               {targets.map((t, i) => (
-                <label key={i} className={`tp-item ${direction === 'down' ? 'tp-radio' : ''}`}>
-                  {direction === 'up' ? (
+                <label key={i} className={`tp-item ${!selectingMany ? 'tp-radio' : ''}`}>
+                  {selectingMany ? (
                     <input type="checkbox" name={`t${i}`} defaultChecked />
                   ) : (
                     <input type="radio" name="target" value={i} defaultChecked={i === 0} required />
@@ -57,7 +60,7 @@ export default function TargetPicker({ item, remotes, direction, onStart, onClos
           <footer>
             <button type="button" onClick={onClose}>Cancel</button>
             <button type="submit" className="primary" disabled={!targets.length}>
-              {direction === 'up' ? 'Upload' : 'Download'}
+              {checking ? 'Check safety' : direction === 'up' ? 'Upload' : 'Download'}
             </button>
           </footer>
         </form>

@@ -22,6 +22,7 @@ Direction (↑ upload / ↓ download) is chosen at sync time, not stored per ite
 - Flat item list with search, project filter, and pagination (30/page)
 - Sync per item (↑/↓) or Sync All (both directions)
 - Dry-run toggle, no-delete toggle (saved in localStorage)
+- Upload safety pre-flight with SHA-256 comparison against the last trusted sync baseline
 - Live progress bar + console output during sync
 - In-memory job history (last 100 runs)
 - Runtime dependency check (bash, rsync, sshpass, ssh)
@@ -38,6 +39,8 @@ npm run dev
 ```
 
 Keep `sync-config.json` local. The repo only tracks `sync-config.example.json`.
+
+Before a real upload, Sync GUI checks the selected target against the last successful sync. Uploads are blocked when the target has changed independently or when local and target changes conflict. A first-time target with existing files must be explicitly trusted from the pre-flight result; the baseline is stored locally in `.sync-state.json`.
 
 Open the local Next.js URL shown in the terminal. For the Electron app:
 

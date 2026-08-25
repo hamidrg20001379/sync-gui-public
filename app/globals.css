@@ -2138,6 +2138,7 @@ label {
 
 .item-actions-bottom .btn-up,
 .item-actions-bottom .btn-down,
+.item-actions-bottom .btn-check,
 .item-actions-bottom .live-icon,
 .item-actions-bottom .hook-icon {
   width: 32px;
@@ -2148,6 +2149,23 @@ label {
   justify-content: center;
   border-radius: var(--radius);
   font-size: 13px;
+}
+
+.item-actions-bottom .btn-check {
+  color: var(--accent);
+}
+
+.preflight-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .live-icon {

@@ -7,6 +7,7 @@ dev.log
 .venv/
 .env
 sync-config.json
+.sync-state.json
 sync-projects.json
 sync-gui.db
 vendor/win-tools

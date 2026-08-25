@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Plus, CaretUp, CaretDown, CaretRight, Gear, X, Lightning, ClockCounterClockwise, Copy, GitBranch } from "@phosphor-icons/react";
+import { Plus, CaretUp, CaretDown, CaretRight, Gear, X, Lightning, ClockCounterClockwise, Copy, GitBranch, ShieldCheck } from "@phosphor-icons/react";
 import EditorModal from "./EditorModal";
 import ConfirmModal from "./ConfirmModal";
 import TargetPicker from "./TargetPicker";
@@ -30,6 +30,27 @@ function blankItem() {
 
 function resolveProject(id, projects) {
   return projects.find((p) => p.id === id);
+}
+
+function formatPreflight(result) {
+  const lines = [
+    result.safe ? "PRE-FLIGHT: SAFE TO UPLOAD" : "PRE-FLIGHT: UPLOAD BLOCKED",
+    `Expected local changes: ${result.summary?.expectedLocal || 0}`,
+    `Target drift: ${result.summary?.targetDrift || 0}`,
+    `Conflicts: ${result.summary?.conflicts || 0}`,
+  ];
+  if (!result.baselineReady) {
+    lines.push(result.needsBaseline
+      ? "No baseline exists yet; the empty target can be used as the initial baseline."
+      : "No baseline exists and the target already contains files. Review it, then trust it explicitly if correct.");
+  }
+  for (const mapping of result.mappings || []) {
+    lines.push(`\n[${mapping.itemName} / ${mapping.remoteName}] ${mapping.status}`);
+    for (const change of mapping.changes || []) {
+      lines.push(`  ${change.kind}: ${change.path}`);
+    }
+  }
+  return lines.join("\n");
 }
 function parseVariablesInput(value) {
   const variables = {};
@@ -123,6 +144,8 @@ export default function SyncListView({ config, onRefresh }) {
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState("ready");
+  const [preflight, setPreflight] = useState(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyMinimized, setHistoryMinimized] = useState(false);
   const [syncingIds, setSyncingIds] = useState([]);
@@ -585,41 +608,127 @@ export default function SyncListView({ config, onRefresh }) {
     }
   }
 
-  function doSync(itemIds, direction, targetMap = {}, options = {}) {
-    const { liveItemId = null } = options;
-    setStatus("running");
-    setSyncingIds(itemIds);
-    if (liveItemId) liveLastRunRef.current[liveItemId] = Date.now();
-    const label = direction === "up" ? "up" : "down";
-    setOutput(
-      `> syncing ${itemIds.length} item(s) ${label}${liveItemId ? " [live]" : ""}\n`,
-    );
-    fetch("/api/run", {
+  async function requestPreflight(targetMap) {
+    const response = await fetch("/api/preflight", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dryRun,
-        noDelete,
-        direction,
-        itemTargets: targetMap,
-      }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) {
-          setOutput((o) => o + (data.error || "Failed") + "\n");
+      body: JSON.stringify({ direction: "up", itemTargets: targetMap }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Pre-flight check failed.");
+    return data;
+  }
+
+  async function runPreflight(itemIds, targetMap) {
+    setPreflightBusy(true);
+    setStatus("checking");
+    setOutput(`> checking ${itemIds.length} item(s) for safe upload\n`);
+    try {
+      const result = await requestPreflight(targetMap);
+      setPreflight({ ...result, itemIds, itemTargets: targetMap });
+      setOutput(formatPreflight(result));
+      setStatus(result.safe ? "done" : "failed");
+      toast(result.safe ? "Safe to upload." : "Upload blocked by target changes.", result.safe ? "info" : "error");
+    } catch (error) {
+      setOutput(error.message);
+      setStatus("failed");
+      toast(error.message, "error");
+    } finally {
+      setPreflightBusy(false);
+    }
+  }
+
+  async function trustPreflightBaseline() {
+    if (!preflight?.itemTargets) return;
+    setPreflightBusy(true);
+    try {
+      const response = await fetch("/api/preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "trust",
+          direction: "up",
+          itemTargets: preflight.itemTargets,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not record baseline.");
+      toast("Current target recorded as trusted baseline.");
+      await runPreflight(preflight.itemIds, preflight.itemTargets);
+    } catch (error) {
+      setPreflightBusy(false);
+      toast(error.message, "error");
+    }
+  }
+
+  async function doSync(itemIds, direction, targetMap = {}, options = {}) {
+    const { liveItemId = null } = options;
+    const label = direction === "up" ? "up" : "down";
+    if (direction === "up" && !dryRun) {
+      setStatus("checking");
+      setSyncingIds(itemIds);
+      setOutput(`> checking ${itemIds.length} item(s) for safe upload\n`);
+      try {
+        const result = await requestPreflight(targetMap);
+        if (!result.safe) {
+          setPreflight({ ...result, itemIds, itemTargets: targetMap });
+          setOutput(formatPreflight(result));
           setStatus("failed");
           setSyncingIds([]);
           return;
         }
-        setOutput((o) => o + `Job #${data.id} started.\n`);
-        pollJob(data.id);
+      } catch (error) {
+        setOutput(error.message);
+        setStatus("failed");
+        setSyncingIds([]);
+        toast(error.message, "error");
+        return;
+      }
+    }
+
+    setPreflight(null);
+    setStatus("running");
+    setSyncingIds(itemIds);
+    if (liveItemId) liveLastRunRef.current[liveItemId] = Date.now();
+    setOutput(`> syncing ${itemIds.length} item(s) ${label}${liveItemId ? " [live]" : ""}\n`);
+    try {
+      const response = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dryRun,
+          noDelete,
+          direction,
+          preflight: direction === "up" && !dryRun,
+          itemTargets: targetMap,
+        }),
       });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        if (data.preflight) {
+          setPreflight({ ...data.preflight, itemIds, itemTargets: targetMap });
+          setOutput(formatPreflight(data.preflight));
+        } else {
+          setOutput(data.error || "Failed");
+        }
+        setStatus("failed");
+        setSyncingIds([]);
+        return;
+      }
+      setOutput((o) => o + `Job #${data.id} started.\n`);
+      pollJob(data.id);
+    } catch (error) {
+      setOutput(error.message);
+      setStatus("failed");
+      setSyncingIds([]);
+    }
   }
 
   function handleSingleSync(item, direction, targetIndices) {
     setSyncTargetPicker(null);
-    doSync([item.id], direction, { [item.id]: targetIndices });
+    const targetMap = { [item.id]: targetIndices };
+    if (direction === "check") runPreflight([item.id], targetMap);
+    else doSync([item.id], direction, targetMap);
   }
 
   function handleSyncAll(direction) {
@@ -1013,6 +1122,17 @@ export default function SyncListView({ config, onRefresh }) {
                       <CaretDown size={14} weight="bold" />
                     </button>
                     <button
+                      className="btn-check"
+                      onClick={() =>
+                        setSyncTargetPicker({ item, direction: "check" })
+                      }
+                      title="Check upload safety"
+                      aria-label="Check upload safety"
+                      disabled={preflightBusy}
+                    >
+                      <ShieldCheck size={14} weight="bold" />
+                    </button>
+                    <button
                       className={`live-icon ${liveEnabled ? "active" : ""}`}
                       onClick={() => toggleLiveSync(item.id)}
                       title={
@@ -1069,6 +1189,15 @@ export default function SyncListView({ config, onRefresh }) {
             <button onClick={() => setOutput("")}>Clear</button>
           </div>
           <pre>{output || "Ready to sync."}</pre>
+        </div>
+      )}
+
+      {preflight && !preflight.safe && !preflight.baselineReady && (
+        <div className="preflight-action">
+          <span>Target changes need review before upload.</span>
+          <button onClick={trustPreflightBaseline} disabled={preflightBusy}>
+            Trust current target
+          </button>
         </div>
       )}
 
@@ -1132,10 +1261,10 @@ export default function SyncListView({ config, onRefresh }) {
       </aside>
 
       {syncTargetPicker && (
-        <TargetPicker
-          item={syncTargetPicker.item}
-          remotes={remotes}
-          direction={syncTargetPicker.direction}
+          <TargetPicker
+            item={syncTargetPicker.item}
+            remotes={remotes}
+            direction={syncTargetPicker.direction}
           onStart={(ti) =>
             handleSingleSync(
               syncTargetPicker.item,
