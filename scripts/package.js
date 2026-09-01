@@ -37,18 +37,81 @@ function copyFiltered(source, target, skip) {
   });
 }
 
-function winToolsSource() {
-  const candidates = [
+const bundledWindowsExecutables = new Set([
+  'bash.exe',
+  'find.exe',
+  'mkdir.exe',
+  'rsync.exe',
+  'sha256sum.exe',
+  'ssh.exe',
+  'sshpass.exe'
+]);
+
+function skipBundledWindowsTool(relative) {
+  if (!relative) return false;
+  if (
+    relative === 'home' ||
+    relative.startsWith('home/') ||
+    relative === 'tmp' ||
+    relative.startsWith('tmp/') ||
+    relative === 'var' ||
+    relative.startsWith('var/')
+  ) return true;
+
+  if (relative.startsWith('usr/bin/')) {
+    const name = path.posix.basename(relative);
+    return !name.endsWith('.dll') && !bundledWindowsExecutables.has(name);
+  }
+
+  if (relative.startsWith('usr/lib/')) {
+    return (
+      relative === 'usr/lib/perl5' ||
+      relative.startsWith('usr/lib/perl5/') ||
+      relative === 'usr/lib/terminfo' ||
+      relative.startsWith('usr/lib/terminfo/') ||
+      relative === 'usr/lib/gnupg' ||
+      relative.startsWith('usr/lib/gnupg/') ||
+      relative === 'usr/lib/pkgconfig' ||
+      relative.startsWith('usr/lib/pkgconfig/')
+    );
+  }
+
+  if (relative.startsWith('usr/share/')) {
+    return !(
+      relative === 'usr/share/pki' ||
+      relative.startsWith('usr/share/pki/') ||
+      relative === 'usr/share/licenses' ||
+      relative.startsWith('usr/share/licenses/') ||
+      relative === 'usr/share/zoneinfo' ||
+      relative.startsWith('usr/share/zoneinfo/')
+    );
+  }
+
+  return (
+    relative !== 'etc' &&
+    !relative.startsWith('etc/') &&
+    relative !== 'usr' &&
+    !relative.startsWith('usr/')
+  );
+}
+
+function winToolsRoot() {
+  const binCandidates = [
     process.env.SYNC_GUI_WIN_TOOLS_BIN,
     path.join(root, 'vendor', 'win-tools', 'usr', 'bin'),
     'C:\\msys64\\usr\\bin'
   ].filter(Boolean);
+  const rootCandidates = [
+    process.env.SYNC_GUI_WIN_TOOLS_ROOT,
+    path.join(root, 'vendor', 'win-tools'),
+    ...binCandidates.map((candidate) => path.dirname(path.dirname(candidate)))
+  ].filter(Boolean);
 
-  return candidates.find((candidate) => (
-    fs.existsSync(path.join(candidate, 'bash.exe')) &&
-    fs.existsSync(path.join(candidate, 'rsync.exe')) &&
-    fs.existsSync(path.join(candidate, 'ssh.exe')) &&
-    fs.existsSync(path.join(candidate, 'sshpass.exe'))
+  return rootCandidates.find((candidate) => (
+    fs.existsSync(path.join(candidate, 'usr', 'bin', 'bash.exe')) &&
+    fs.existsSync(path.join(candidate, 'usr', 'bin', 'rsync.exe')) &&
+    fs.existsSync(path.join(candidate, 'usr', 'bin', 'ssh.exe')) &&
+    fs.existsSync(path.join(candidate, 'usr', 'bin', 'sshpass.exe'))
   ));
 }
 
@@ -184,12 +247,15 @@ function copyApp() {
   ));
 
   if (process.platform === 'win32') {
-    const toolsSource = winToolsSource();
-    const toolsTarget = path.join(appDir, 'vendor', 'win-tools', 'usr', 'bin');
+    const toolsSource = winToolsRoot();
+    const toolsTarget = path.join(appDir, 'vendor', 'win-tools');
     if (!toolsSource) {
-      throw new Error('Bundled Windows tools are missing. Add vendor/win-tools/usr/bin, set SYNC_GUI_WIN_TOOLS_BIN, or install MSYS2 to C:\\msys64.');
+      throw new Error('Bundled Windows tools are missing. Add vendor/win-tools, set SYNC_GUI_WIN_TOOLS_ROOT, or install MSYS2 to C:\\msys64.');
     }
-    fs.cpSync(toolsSource, toolsTarget, { recursive: true });
+
+    // Copy only the portable runtime needed by Sync GUI. Never copy a
+    // builder's home directory: it may contain private SSH keys.
+    copyFiltered(toolsSource, toolsTarget, skipBundledWindowsTool);
     fs.mkdirSync(path.join(appDir, 'vendor', 'win-tools', 'tmp'), { recursive: true });
     fs.mkdirSync(path.join(appDir, 'vendor', 'win-tools', 'home', 'sync-gui', '.ssh'), { recursive: true });
   }
@@ -206,6 +272,8 @@ function selfCheck() {
     for (const tool of ['bash.exe', 'rsync.exe', 'ssh.exe', 'sshpass.exe']) {
       requiredFiles.push(path.join(appDir, 'vendor', 'win-tools', 'usr', 'bin', tool));
     }
+    requiredFiles.push(path.join(appDir, 'vendor', 'win-tools', 'usr', 'bin', 'msys-2.0.dll'));
+    requiredFiles.push(path.join(appDir, 'vendor', 'win-tools', 'usr', 'ssl', 'certs', 'ca-bundle.crt'));
   }
   for (const required of requiredFiles) {
     if (!fs.existsSync(required)) {
@@ -214,7 +282,8 @@ function selfCheck() {
   }
 }
 
-// ponytail: portable-folder packaging; use electron-builder later if you need installers, signing, or auto-update.
+// Portable-folder packaging; Inno Setup wraps this folder into the end-user
+// installer. The resulting installer contains Electron, Next.js, and MSYS2.
 checkRequired();
 removeOutputDir();
 packageRuntime();
