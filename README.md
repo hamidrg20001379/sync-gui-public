@@ -57,9 +57,12 @@ One-command dependency install + app launch:
 | Linux | `bash scripts/setup-linux.sh` |
 | Windows | `powershell -File scripts/setup-win.ps1` |
 
-The Windows `.exe` installer includes its own Bash, rsync, OpenSSH, and sshpass
-runtime. End users do not need to install MSYS2 separately. `setup-win.ps1` is
-only needed when running the unpackaged source directly on Windows.
+The Windows `.exe` installer includes its own portable MSYS2 runtime: Bash,
+rsync, OpenSSH, sshpass, runtime DLLs, certificates, and shell support files.
+It also includes Electron and the Node.js runtime, so end users do not need to
+install Node.js, npm, Git, MSYS2, or any other dependency to run the packaged
+application. `setup-win.ps1` is only for running the unpackaged source directly
+on a developer machine.
 
 ## Build
 
@@ -70,6 +73,21 @@ npm run installer:win     # Windows installer (Inno Setup)
 npm run installer:mac     # macOS .dmg
 npm run installer:linux   # Linux .AppImage
 ```
+
+For a Windows build, the build machine needs MSYS2 with the sync tools. The
+release workflow installs these automatically with `msys2/setup-msys2`; the
+resulting installer copies a sanitized portable MSYS2 tree into the app. For a
+local build, install `rsync`, `openssh`, and `sshpass` in MSYS2, then run:
+
+```powershell
+npm run build
+npm run dist
+npm run installer:win
+```
+
+You can point the packager at another MSYS2 installation with
+`SYNC_GUI_WIN_TOOLS_ROOT`. The source tree must contain `usr\bin\bash.exe`,
+`rsync.exe`, `ssh.exe`, and `sshpass.exe` below that directory.
 
 ## PM2
 
