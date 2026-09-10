@@ -1,0 +1,12 @@
+services:
+  sync-gui:
+    build: .
+    ports:
+      - "127.0.0.1:49173:49173"
+    environment:
+      SYNC_CONFIG: /data/sync-config.json
+    volumes:
+      - ./docker-data:/data
+      - ./docker-data/ssh:/root/.ssh
+      - ./sync:/sync
+    restart: unless-stopped
