@@ -16,7 +16,7 @@ test('SSH terminal command uses password auth without inlining password', async 
   });
   const command = spec.args.join('\n');
 
-  assert.match(command, /sshpass -e |OpenSSH\/ssh\.exe|\nssh /);
+  assert.match(command, /sshpass -e |OpenSSH\/ssh\.exe|ssh-wrapper\.sh|\nssh /);
   assert.match(command, /-tt/);
   assert.match(command, /-p '2200'/);
   assert.match(command, /'deploy@example\.com'/);
