@@ -24,6 +24,14 @@ test('SSH terminal command uses password auth without inlining password', async 
   assert.equal(spec.env.SSHPASS, 'secret value');
 });
 
+test('Linux SSH password auth uses sshpass', async () => {
+  if (process.platform === 'win32') return;
+
+  const { sshInvocation } = await import(`../lib/ssh.js?linux-password=${Date.now()}`);
+  assert.equal(sshInvocation(true), 'sshpass -e ssh');
+  assert.equal(sshInvocation(false), 'ssh');
+});
+
 test('Windows OpenSSH fallback uses a temporary askpass helper', async () => {
   const { prepareSshAuth, sshExecutable, sshInvocation } = await import(`../lib/ssh.js?askpass=${Date.now()}`);
   if (!sshExecutable().includes('/Windows/System32/OpenSSH/')) return;

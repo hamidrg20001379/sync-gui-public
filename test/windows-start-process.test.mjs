@@ -16,6 +16,8 @@ test('SSH sync has no SCP fallback', async () => {
 });
 
 test('bundled MSYS2 SSH keeps password authentication without sshpass', async () => {
+  if (process.platform !== 'win32') return;
+
   const { sshExecutable, sshInvocation, usesNativeWindowsOpenSsh } = await import(`../lib/ssh.js?password=${Date.now()}`);
   if (usesNativeWindowsOpenSsh(sshExecutable())) return;
 
