@@ -14,7 +14,9 @@
     "electron": "electron .",
     "electron:dev": "electron .",
     "dist": "npm run build && node scripts/package.js",
+    "dist:web": "set SYNC_GUI_WEB_INSTALLER=1&& npm run build && node scripts/package.js",
     "installer:win": "node scripts/package-win-installer.js",
+    "installer:win:web": "set SYNC_GUI_WEB_INSTALLER=1&& node scripts/package-win-installer.js",
     "installer:mac": "node scripts/package-mac-dmg.js",
     "installer:linux": "node scripts/package-linux-appimage.js"
   },

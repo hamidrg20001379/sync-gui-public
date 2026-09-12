@@ -22,7 +22,10 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
     host: "",
     port: 22,
     username: "",
+    authMethod: "password",
     password: "",
+    privateKeyPath: "",
+    keyPassphrase: "",
   });
   const [showNewPass, setShowNewPass] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -84,6 +87,8 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
     if (!newRemote.name) return;
     if (newRemote.kind === "local" && !newRemote.root?.trim())
       return toast("Root path is required for local remotes.", "error");
+    if (newRemote.kind === "ssh" && newRemote.authMethod === "key" && !newRemote.privateKeyPath?.trim())
+      return toast("Private key file is required for SSH key authentication.", "error");
     const id =
       newRemote.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") +
       "-" +
@@ -108,7 +113,10 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
       host: "",
       port: 22,
       username: "",
+      authMethod: "password",
       password: "",
+      privateKeyPath: "",
+      keyPassphrase: "",
     });
     onRefresh();
     toast("Remote created.");
@@ -293,28 +301,78 @@ export default function ProjectsView({ config, onBack, onRefresh }) {
                       </label>
                     </div>
                     <label>
-                      Password
-                      <div className="password-wrap">
-                        <input
-                          type={showNewPass ? "text" : "password"}
-                          value={newRemote.password}
-                          onChange={(e) =>
-                            setNewRemote({
-                              ...newRemote,
-                              password: e.target.value,
-                            })
-                          }
-                          placeholder="Optional"
-                        />
-                        <button
-                          className="eye-btn"
-                          type="button"
-                          onClick={() => setShowNewPass((prev) => !prev)}
-                        >
-                          {showNewPass ? <EyeSlash size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
+                      Authentication
+                      <select
+                        value={newRemote.authMethod || "password"}
+                        onChange={(e) =>
+                          setNewRemote({
+                            ...newRemote,
+                            authMethod: e.target.value,
+                            password: e.target.value === "key" ? "" : newRemote.password,
+                            keyPassphrase: e.target.value === "password" ? "" : newRemote.keyPassphrase,
+                          })
+                        }
+                      >
+                        <option value="password">Password</option>
+                        <option value="key">SSH private key</option>
+                      </select>
                     </label>
+                    {newRemote.authMethod === "key" ? (
+                      <>
+                        <label>
+                          Private key file
+                          <input
+                            value={newRemote.privateKeyPath || ""}
+                            onChange={(e) =>
+                              setNewRemote({ ...newRemote, privateKeyPath: e.target.value })
+                            }
+                            placeholder="C:\\Users\\name\\.ssh\\id_ed25519"
+                          />
+                          <small className="field-help">The key stays on this computer; only its path is saved.</small>
+                        </label>
+                        <label>
+                          Key passphrase (optional)
+                          <div className="password-wrap">
+                            <input
+                              type={showNewPass ? "text" : "password"}
+                              value={newRemote.keyPassphrase || ""}
+                              onChange={(e) =>
+                                setNewRemote({ ...newRemote, keyPassphrase: e.target.value })
+                              }
+                              placeholder="Leave empty for an unencrypted key"
+                            />
+                            <button
+                              className="eye-btn"
+                              type="button"
+                              onClick={() => setShowNewPass((prev) => !prev)}
+                            >
+                              {showNewPass ? <EyeSlash size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                        </label>
+                      </>
+                    ) : (
+                      <label>
+                        Password
+                        <div className="password-wrap">
+                          <input
+                            type={showNewPass ? "text" : "password"}
+                            value={newRemote.password}
+                            onChange={(e) =>
+                              setNewRemote({ ...newRemote, password: e.target.value })
+                            }
+                            placeholder="Optional"
+                          />
+                          <button
+                            className="eye-btn"
+                            type="button"
+                            onClick={() => setShowNewPass((prev) => !prev)}
+                          >
+                            {showNewPass ? <EyeSlash size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </label>
+                    )}
                   </>
                 )}
                 {newRemote.kind === "local" && (

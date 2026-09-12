@@ -7,9 +7,10 @@ const productName = 'Sync GUI';
 const portableId = 'Sync-GUI-win32-x64';
 const distDir = path.join(root, 'dist');
 const portableDir = path.join(distDir, portableId);
-const installerName = 'Sync-GUI-Setup-win32-x64';
-const installerPath = path.join(distDir, `${installerName}.exe`);
 const issPath = path.join(distDir, 'sync-gui-installer.iss');
+const webInstaller = process.env.SYNC_GUI_WEB_INSTALLER === '1';
+const installerName = webInstaller ? 'Sync-GUI-Web-Setup-win32-x64' : 'Sync-GUI-Setup-win32-x64';
+const installerPath = path.join(distDir, `${installerName}.exe`);
 
 function findIscc() {
   if (process.env.ISCC && fs.existsSync(process.env.ISCC)) return process.env.ISCC;
@@ -54,13 +55,13 @@ const iss = `#define MyAppName "${productName}"
 AppId={{AEB30F7D-C298-4B21-A5A7-443B6894649B}
 AppName={#MyAppName}
 AppVersion=${appVersion()}
-DefaultDirName={localappdata}\\Programs\\${productName}
+DefaultDirName=${webInstaller ? `{autopf}\\${productName}` : `{localappdata}\\Programs\\${productName}`}
 DefaultGroupName={#MyAppName}
 OutputDir=${issQuote(distDir)}
 OutputBaseFilename=${installerName}
 Compression=lzma2/fast
 SolidCompression=no
-PrivilegesRequired=lowest
+PrivilegesRequired=${webInstaller ? 'admin' : 'lowest'}
 DisableProgramGroupPage=yes
 
 [Tasks]
@@ -74,7 +75,7 @@ Name: "{group}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"
 Name: "{userdesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+${webInstaller ? 'Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\\resources\\app\\scripts\\install-win-tools.ps1"" -InstallDir ""{app}\\resources\\app\\vendor\\win-tools"""; StatusMsg: "Downloading and installing Sync GUI dependencies..."; Flags: waituntilterminated runhidden\n' : ''}Filename: "{app}\\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 `;
 
 fs.writeFileSync(issPath, iss, 'utf8');

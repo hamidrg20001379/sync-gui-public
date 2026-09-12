@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import test from 'node:test';
 
 test('SSH terminal command uses password auth without inlining password', async () => {
@@ -16,7 +16,7 @@ test('SSH terminal command uses password auth without inlining password', async 
   });
   const command = spec.args.join('\n');
 
-  assert.match(command, /sshpass -e |OpenSSH\/ssh\.exe|ssh-wrapper\.sh|\nssh /);
+  assert.match(command, /sshpass -e |OpenSSH\/ssh\.exe|\nssh /);
   assert.match(command, /-tt/);
   assert.match(command, /-p '2200'/);
   assert.match(command, /'deploy@example\.com'/);
@@ -24,12 +24,21 @@ test('SSH terminal command uses password auth without inlining password', async 
   assert.equal(spec.env.SSHPASS, 'secret value');
 });
 
-test('Linux SSH password auth uses sshpass', async () => {
-  if (process.platform === 'win32') return;
+test('SSH terminal command uses a private key without sshpass', async () => {
+  const { terminalCommand } = await import(`../lib/terminal.js?ssh-key=${Date.now()}`);
+  const spec = await terminalCommand({
+    kind: 'ssh',
+    name: 'Prod',
+    host: 'example.com',
+    port: 2200,
+    username: 'deploy',
+    authMethod: 'key',
+    privateKeyPath: 'C:\\Users\\me\\.ssh\\id_ed25519'
+  });
+  const command = spec.args.join('\n');
 
-  const { sshInvocation } = await import(`../lib/ssh.js?linux-password=${Date.now()}`);
-  assert.equal(sshInvocation(true), 'sshpass -e ssh');
-  assert.equal(sshInvocation(false), 'ssh');
+  assert.match(command, /-i .*id_ed25519/);
+  assert.doesNotMatch(command, /sshpass/);
 });
 
 test('Windows OpenSSH fallback uses a temporary askpass helper', async () => {
@@ -38,15 +47,12 @@ test('Windows OpenSSH fallback uses a temporary askpass helper', async () => {
 
   assert.doesNotMatch(sshInvocation(true), /sshpass/);
   const auth = await prepareSshAuth('secret value');
-  const msysRoot = dirname(dirname(dirname(auth.env.SSH_ASKPASS)));
-  const askpassPath = join(msysRoot, 'tmp', 'sync-gui-askpass.sh');
   try {
-    assert.match(auth.env.SSH_ASKPASS, /bash\.exe$/i);
-    assert.match(await readFile(askpassPath, 'utf8'), /SSHPASS/);
+    assert.match(auth.env.SSH_ASKPASS, /sync-gui-askpass-.*\.cmd$/i);
+    assert.equal(auth.env.BASH_ENV, undefined);
   } finally {
     await auth.cleanup();
   }
-  assert.equal(auth.env.BASH_ENV, undefined);
 });
 
 test('native Windows OpenSSH receives a native askpass path', async () => {
@@ -60,7 +66,7 @@ test('native Windows OpenSSH receives a native askpass path', async () => {
     const { prepareSshAuth } = await import(`../lib/ssh.js?native-askpass=${Date.now()}`);
     const auth = await prepareSshAuth('secret value');
     try {
-      assert.match(auth.env.SSH_ASKPASS, /bash\.exe$/i);
+      assert.match(auth.env.SSH_ASKPASS, /sync-gui-askpass-.*\.cmd$/i);
       assert.equal(auth.env.BASH_ENV, undefined);
     } finally {
       await auth.cleanup();

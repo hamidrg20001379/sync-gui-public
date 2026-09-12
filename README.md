@@ -57,7 +57,7 @@ One-command dependency install + app launch:
 | Linux | `bash scripts/setup-linux.sh` |
 | Windows | `powershell -File scripts/setup-win.ps1` |
 
-The Windows `.exe` installer includes its own portable MSYS2 runtime: Bash,
+The regular offline Windows `.exe` installer includes its own portable MSYS2 runtime: Bash,
 rsync, OpenSSH, sshpass, runtime DLLs, certificates, and shell support files.
 It also includes Electron and the Node.js runtime, so end users do not need to
 install Node.js, npm, Git, MSYS2, or any other dependency to run the packaged
@@ -84,6 +84,15 @@ npm run build
 npm run dist
 npm run installer:win
 ```
+
+For a smaller online Windows installer that requests administrator permission and downloads MSYS2 during installation:
+
+```powershell
+npm run dist:web
+npm run installer:win:web
+```
+
+The online installer downloads a pinned MSYS2 base archive, verifies its SHA-256 checksum, extracts it privately into the Sync GUI installation directory, and installs `rsync`, `openssh`, and `sshpass`. It requires internet access during installation. The regular Windows commands remain the offline installer path.
 
 You can point the packager at another MSYS2 installation with
 `SYNC_GUI_WIN_TOOLS_ROOT`. The source tree must contain `usr\bin\bash.exe`,
@@ -115,7 +124,7 @@ node --experimental-detect-module --test tests/api-test.mjs
 
 `sync-config.example.json` shows the schema:
 
-- `remotes[]` — SSH (`host`, `port`, `username`, `password`) or Local (`type: "local"`)
+- `remotes[]` — SSH (`host`, `port`, `username`, and either `password` or `authMethod: "key"` with `privateKeyPath` and optional `keyPassphrase`) or Local (`type: "local"`)
 - `projects[]` — `name` + `remoteId`
 - `items[]` — `name`, `source`, `type` (file|folder), `projectId`, and `targets[]`
 - `targets[]` — `name`, `dest`, and `remoteIds[]`; legacy single `remoteId` still works

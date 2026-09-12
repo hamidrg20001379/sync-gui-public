@@ -15,7 +15,10 @@ function blankRemote() {
     host: "",
     port: 22,
     username: "",
+    authMethod: "password",
     password: "",
+    privateKeyPath: "",
+    keyPassphrase: "",
   };
 }
 
@@ -39,6 +42,9 @@ export default function RemotesView({ config, onBack, onRefresh, activeTerminalR
     if (!editing.name) return toast("Name is required.", "error");
     if (editing.kind === "ssh" && !editing.host)
       return toast("Host is required for SSH.", "error");
+    const authMethod = editing.authMethod || (editing.privateKeyPath ? "key" : "password");
+    if (editing.kind === "ssh" && authMethod === "key" && !editing.privateKeyPath?.trim())
+      return toast("Private key file is required for SSH key authentication.", "error");
     if (editing.kind === "local" && !editing.root?.trim())
       return toast("Root path is required for local remotes.", "error");
     const idx = remotes.findIndex((r) => r.id === editing.id);
@@ -52,7 +58,18 @@ export default function RemotesView({ config, onBack, onRefresh, activeTerminalR
       editing.host = "";
       editing.port = 22;
       editing.username = "";
+      editing.authMethod = "password";
       editing.password = "";
+      editing.privateKeyPath = "";
+      editing.keyPassphrase = "";
+    }
+    if (editing.kind === "ssh") {
+      editing.authMethod = authMethod;
+      if (authMethod === "key") editing.password = "";
+      else {
+        editing.privateKeyPath = "";
+        editing.keyPassphrase = "";
+      }
     }
     if (idx >= 0) next[idx] = editing;
     else next.push(editing);
@@ -156,7 +173,7 @@ export default function RemotesView({ config, onBack, onRefresh, activeTerminalR
                 <span className={`badge badge-${r.kind}`}>{r.kind}</span>
                 {r.kind === "ssh" && (
                   <span className="remote-detail">
-                    {r.username}@{r.host}:{r.port}
+                    {r.username}@{r.host}:{r.port} · {r.authMethod === "key" || r.privateKeyPath ? "SSH key" : "password"}
                   </span>
                 )}
                 {r.kind !== "ssh" && r.root && (
@@ -236,7 +253,10 @@ export default function RemotesView({ config, onBack, onRefresh, activeTerminalR
                     host: "",
                     port: 22,
                     username: "",
+                    authMethod: "password",
                     password: "",
+                    privateKeyPath: "",
+                    keyPassphrase: "",
                   })
                 }
               >
@@ -285,30 +305,88 @@ export default function RemotesView({ config, onBack, onRefresh, activeTerminalR
                   </label>
                 </div>
                 <label>
-                  Password
-                  <div className="password-wrap">
-                    <input
-                      type={editing.showPass ? "text" : "password"}
-                      value={editing.password || ""}
-                      onChange={(e) =>
-                        setEditing({ ...editing, password: e.target.value })
-                      }
-                      placeholder="Optional"
-                    />
-                    <button
-                      className="eye-btn"
-                      type="button"
-                      onClick={() =>
-                        setEditing((prev) => ({
-                          ...prev,
-                          showPass: !prev.showPass,
-                        }))
-                      }
-                    >
-                      {editing.showPass ? <EyeSlash size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
+                  Authentication
+                  <select
+                    value={editing.authMethod || (editing.privateKeyPath ? "key" : "password")}
+                    onChange={(e) =>
+                      setEditing({
+                        ...editing,
+                        authMethod: e.target.value,
+                        password: e.target.value === "key" ? "" : editing.password,
+                        keyPassphrase: e.target.value === "password" ? "" : editing.keyPassphrase,
+                      })
+                    }
+                  >
+                    <option value="password">Password</option>
+                    <option value="key">SSH private key</option>
+                  </select>
                 </label>
+                {(editing.authMethod || (editing.privateKeyPath ? "key" : "password")) === "key" ? (
+                  <>
+                    <label>
+                      Private key file
+                      <input
+                        value={editing.privateKeyPath || ""}
+                        onChange={(e) =>
+                          setEditing({ ...editing, privateKeyPath: e.target.value })
+                        }
+                        placeholder="C:\\Users\\name\\.ssh\\id_ed25519"
+                      />
+                      <small className="field-help">The key stays on this computer; only its path is saved.</small>
+                    </label>
+                    <label>
+                      Key passphrase (optional)
+                      <div className="password-wrap">
+                        <input
+                          type={editing.showKeyPassphrase ? "text" : "password"}
+                          value={editing.keyPassphrase || ""}
+                          onChange={(e) =>
+                            setEditing({ ...editing, keyPassphrase: e.target.value })
+                          }
+                          placeholder="Leave empty for an unencrypted key"
+                        />
+                        <button
+                          className="eye-btn"
+                          type="button"
+                          onClick={() =>
+                            setEditing((prev) => ({
+                              ...prev,
+                              showKeyPassphrase: !prev.showKeyPassphrase,
+                            }))
+                          }
+                        >
+                          {editing.showKeyPassphrase ? <EyeSlash size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </label>
+                  </>
+                ) : (
+                  <label>
+                    Password
+                    <div className="password-wrap">
+                      <input
+                        type={editing.showPass ? "text" : "password"}
+                        value={editing.password || ""}
+                        onChange={(e) =>
+                          setEditing({ ...editing, password: e.target.value })
+                        }
+                        placeholder="Optional"
+                      />
+                      <button
+                        className="eye-btn"
+                        type="button"
+                        onClick={() =>
+                          setEditing((prev) => ({
+                            ...prev,
+                            showPass: !prev.showPass,
+                          }))
+                        }
+                      >
+                        {editing.showPass ? <EyeSlash size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </label>
+                )}
               </>
             )}
             {editing.kind === "local" && (

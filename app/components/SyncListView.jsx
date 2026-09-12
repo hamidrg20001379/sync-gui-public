@@ -412,6 +412,29 @@ export default function SyncListView({ config, onRefresh }) {
       .catch((e) => toast(e.message, "error"));
   }
 
+  async function copyOutput() {
+    if (!output) return;
+    try {
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(output);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = output;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("Clipboard access was denied.");
+      }
+      toast("Output copied to clipboard.");
+    } catch (error) {
+      toast(error.message || "Could not copy output.", "error");
+    }
+  }
+
   function syncCategory(category, direction) {
     const ids = new Set(categoryItemIds(categories, items, category.id));
     const categoryItems = items.filter((item) => ids.has(item.id));
@@ -1186,7 +1209,12 @@ export default function SyncListView({ config, onRefresh }) {
         <div className="console-panel">
           <div className="console-head">
             <span>Output</span>
-            <button onClick={() => setOutput("")}>Clear</button>
+            <div className="console-actions">
+              <button onClick={copyOutput} disabled={!output} title="Copy output" aria-label="Copy output">
+                <Copy size={13} weight="bold" /> Copy
+              </button>
+              <button onClick={() => setOutput("")}>Clear</button>
+            </div>
           </div>
           <pre>{output || "Ready to sync."}</pre>
         </div>

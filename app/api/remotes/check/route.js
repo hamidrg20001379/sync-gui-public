@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { readConfig } from '../../../../lib/config.js';
-import { prepareSshAuth, sshInvocation, sshShellPathPrefix } from '../../../../lib/ssh.js';
+import { prepareSshAuth, sshAuthMethod, sshInvocation, sshShellPathPrefix } from '../../../../lib/ssh.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,11 +32,22 @@ async function checkSsh(remote) {
     return { ok: false, error: 'SSH remote needs host and username.' };
   }
 
-  const auth = await prepareSshAuth(remote.password);
+  if (sshAuthMethod(remote) === 'key' && !remote.privateKeyPath?.trim()) {
+    return { ok: false, error: 'SSH key authentication needs a private key file path.' };
+  }
+  if (sshAuthMethod(remote) === 'key') {
+    try {
+      await access(path.resolve(remote.privateKeyPath));
+    } catch {
+      return { ok: false, error: `Private key file was not found: ${remote.privateKeyPath}` };
+    }
+  }
+
+  const auth = await prepareSshAuth(remote.password, { passphrase: remote.keyPassphrase });
   return new Promise(resolve => {
     const bash = process.env.SYNC_GUI_BASH || (process.platform === 'win32' ? 'C:\\msys64\\usr\\bin\\bash.exe' : 'bash');
     const ssh = [
-      sshInvocation(Boolean(remote.password)),
+      sshInvocation(sshAuthMethod(remote) !== 'key' && Boolean(remote.password), remote.privateKeyPath),
       `-p ${shq(String(remote.port || 22))}`,
       '-o BatchMode=no',
       '-o ConnectTimeout=5',

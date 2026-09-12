@@ -9,6 +9,7 @@ const packageId = `Sync-GUI-${process.platform}-${process.arch}`;
 const outDir = path.join(root, 'dist', packageId);
 const appDir = appResourcePath();
 const executablePath = appExecutablePath();
+const webInstaller = process.env.SYNC_GUI_WEB_INSTALLER === '1';
 
 function appResourcePath() {
   if (process.platform === 'darwin') {
@@ -37,16 +38,6 @@ function copyFiltered(source, target, skip) {
   });
 }
 
-const bundledWindowsExecutables = new Set([
-  'bash.exe',
-  'find.exe',
-  'mkdir.exe',
-  'rsync.exe',
-  'sha256sum.exe',
-  'ssh.exe',
-  'sshpass.exe'
-]);
-
 function skipBundledWindowsTool(relative) {
   if (!relative) return false;
   if (
@@ -60,7 +51,11 @@ function skipBundledWindowsTool(relative) {
 
   if (relative.startsWith('usr/bin/')) {
     const name = path.posix.basename(relative);
-    return !name.endsWith('.dll') && !bundledWindowsExecutables.has(name);
+    // MSYS2 shell startup uses core utilities such as cygpath, uname, id,
+    // which, locale, tzset, ln, and env in addition to the sync commands.
+    // Keep every executable and runtime DLL so the bundled shell behaves as
+    // a real portable MSYS2 environment without shipping package caches.
+    return !name.endsWith('.dll') && !name.endsWith('.exe');
   }
 
   if (relative.startsWith('usr/lib/')) {
@@ -82,6 +77,8 @@ function skipBundledWindowsTool(relative) {
       relative.startsWith('usr/share/pki/') ||
       relative === 'usr/share/licenses' ||
       relative.startsWith('usr/share/licenses/') ||
+      relative === 'usr/share/locale' ||
+      relative.startsWith('usr/share/locale/') ||
       relative === 'usr/share/zoneinfo' ||
       relative.startsWith('usr/share/zoneinfo/')
     );
@@ -233,6 +230,10 @@ function copyApp() {
     copyRequired(name);
   }
 
+  if (process.platform === 'win32' && webInstaller) {
+    copyRequired('scripts/install-win-tools.ps1');
+  }
+
   // ponytail: exclude duplicated/dev-only payload; switch to Next standalone if the app needs a much smaller runtime.
   copyFiltered(path.join(root, '.next'), path.join(appDir, '.next'), (relative) => (
     relative === 'cache' ||
@@ -247,6 +248,7 @@ function copyApp() {
   ));
 
   if (process.platform === 'win32') {
+    if (webInstaller) return;
     const toolsSource = winToolsRoot();
     const toolsTarget = path.join(appDir, 'vendor', 'win-tools');
     if (!toolsSource) {
@@ -268,7 +270,7 @@ function selfCheck() {
     path.join(appDir, '.next', 'BUILD_ID'),
     path.join(appDir, 'node_modules', 'next', 'package.json')
   ];
-  if (process.platform === 'win32') {
+  if (process.platform === 'win32' && !webInstaller) {
     for (const tool of ['bash.exe', 'rsync.exe', 'ssh.exe', 'sshpass.exe']) {
       requiredFiles.push(path.join(appDir, 'vendor', 'win-tools', 'usr', 'bin', tool));
     }
@@ -283,7 +285,7 @@ function selfCheck() {
 }
 
 // Portable-folder packaging; Inno Setup wraps this folder into the end-user
-// installer. The resulting installer contains Electron, Next.js, and MSYS2.
+// installer. Set SYNC_GUI_WEB_INSTALLER=1 to download MSYS2 during install.
 checkRequired();
 removeOutputDir();
 packageRuntime();
