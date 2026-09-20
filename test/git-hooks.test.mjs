@@ -23,6 +23,8 @@ test('post-commit hook installs, preserves, and removes one sync item', async ()
     assert.match(contents, /echo existing/);
     assert.match(contents, /git diff-tree/);
     assert.match(contents, /-- '\.'/);
+    assert.match(contents, /branch=\$\(git branch --show-current\)/);
+    assert.match(contents, /\[ "\$branch" = main \] \|\| \[ "\$branch" = master \]/);
     assert.match(contents, /api\/run/);
     assert.equal((await getPostCommitHook(item)).installed, true);
 
