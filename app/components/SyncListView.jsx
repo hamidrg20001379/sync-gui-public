@@ -141,6 +141,7 @@ export default function SyncListView({ config, onRefresh }) {
   const [confirmCategoryDelete, setConfirmCategoryDelete] = useState(null);
   const [dragOverCategoryId, setDragOverCategoryId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmForceUpload, setConfirmForceUpload] = useState(null);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState("ready");
@@ -314,6 +315,7 @@ export default function SyncListView({ config, onRefresh }) {
           variables: {},
           variablesText: "",
           remoteSyncIgnoreText: "",
+          postSyncCommand: "",
         },
       ],
     });
@@ -332,6 +334,7 @@ export default function SyncListView({ config, onRefresh }) {
         variables: t.variables || {},
         variablesText: formatVariablesInput(t.variables || {}),
         remoteSyncIgnoreText: t.remoteSyncIgnore || "",
+        postSyncCommand: t.postSyncCommand || "",
       })),
     });
     setShowForm(true);
@@ -520,6 +523,7 @@ export default function SyncListView({ config, onRefresh }) {
             variables: {},
             variablesText: "",
             remoteSyncIgnoreText: "",
+            postSyncCommand: "",
           }
         : editing.targets[index];
     setTargetDraft({ index, target: { ...target } });
@@ -586,6 +590,7 @@ export default function SyncListView({ config, onRefresh }) {
           : [t.remoteId].filter(Boolean),
         variables: parseVariablesInput(t.variablesText || ""),
         remoteSyncIgnore: t.remoteSyncIgnoreText || "",
+        postSyncCommand: t.postSyncCommand?.trim() || "",
       }));
     if (!validTargets.length) {
       toast(
@@ -685,9 +690,9 @@ export default function SyncListView({ config, onRefresh }) {
   }
 
   async function doSync(itemIds, direction, targetMap = {}, options = {}) {
-    const { liveItemId = null } = options;
+    const { liveItemId = null, force = false } = options;
     const label = direction === "up" ? "up" : "down";
-    if (direction === "up" && !dryRun) {
+    if (direction === "up" && !dryRun && !force) {
       setStatus("checking");
       setSyncingIds(itemIds);
       setOutput(`> checking ${itemIds.length} item(s) for safe upload\n`);
@@ -713,7 +718,7 @@ export default function SyncListView({ config, onRefresh }) {
     setStatus("running");
     setSyncingIds(itemIds);
     if (liveItemId) liveLastRunRef.current[liveItemId] = Date.now();
-    setOutput(`> syncing ${itemIds.length} item(s) ${label}${liveItemId ? " [live]" : ""}\n`);
+    setOutput(`> syncing ${itemIds.length} item(s) ${label}${force ? " [forced]" : ""}${liveItemId ? " [live]" : ""}\n`);
     try {
       const response = await fetch("/api/run", {
         method: "POST",
@@ -721,8 +726,9 @@ export default function SyncListView({ config, onRefresh }) {
         body: JSON.stringify({
           dryRun,
           noDelete,
+          force,
           direction,
-          preflight: direction === "up" && !dryRun,
+          preflight: direction === "up" && !dryRun && !force,
           itemTargets: targetMap,
         }),
       });
@@ -752,6 +758,12 @@ export default function SyncListView({ config, onRefresh }) {
     const targetMap = { [item.id]: targetIndices };
     if (direction === "check") runPreflight([item.id], targetMap);
     else doSync([item.id], direction, targetMap);
+  }
+
+  function forcePreflightUpload() {
+    const pending = confirmForceUpload;
+    setConfirmForceUpload(null);
+    if (pending) doSync(pending.itemIds, "up", pending.itemTargets, { force: true });
   }
 
   function handleSyncAll(direction) {
@@ -1220,12 +1232,19 @@ export default function SyncListView({ config, onRefresh }) {
         </div>
       )}
 
-      {preflight && !preflight.safe && !preflight.baselineReady && (
+      {preflight && !preflight.safe && (
         <div className="preflight-action">
           <span>Target changes need review before upload.</span>
-          <button onClick={trustPreflightBaseline} disabled={preflightBusy}>
-            Trust current target
-          </button>
+          <div>
+            {!preflight.baselineReady && (
+              <button onClick={trustPreflightBaseline} disabled={preflightBusy}>
+                Trust current target
+              </button>
+            )}
+            <button className="danger" onClick={() => setConfirmForceUpload(preflight)} disabled={preflightBusy}>
+              Force upload
+            </button>
+          </div>
         </div>
       )}
 
@@ -1521,6 +1540,17 @@ export default function SyncListView({ config, onRefresh }) {
                 />
               </label>
             )}
+            <label>
+              After successful upload (optional)
+              <textarea
+                className="target-vars"
+                value={targetDraft.target.postSyncCommand || ""}
+                onChange={(e) => updateTargetDraft({ postSyncCommand: e.target.value })}
+                placeholder="e.g. systemctl reload nginx"
+                rows={4}
+              />
+              <small>Runs on the target after the whole upload succeeds.</small>
+            </label>
           </div>
         </EditorModal>
       )}
@@ -1625,6 +1655,16 @@ export default function SyncListView({ config, onRefresh }) {
           confirmLabel="Delete"
           onConfirm={doRemove}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {confirmForceUpload && (
+        <ConfirmModal
+          title="Force Upload"
+          message="This replaces target files with the local copies. Unless No-delete is enabled, it also removes target-only files."
+          confirmLabel="Force upload"
+          onConfirm={forcePreflightUpload}
+          onCancel={() => setConfirmForceUpload(null)}
         />
       )}
 

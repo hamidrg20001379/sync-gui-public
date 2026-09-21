@@ -127,7 +127,7 @@ node --experimental-detect-module --test tests/api-test.mjs
 - `remotes[]` — SSH (`host`, `port`, `username`, and either `password` or `authMethod: "key"` with `privateKeyPath` and optional `keyPassphrase`) or Local (`type: "local"`)
 - `projects[]` — `name` + `remoteId`
 - `items[]` — `name`, `source`, `type` (file|folder), `projectId`, and `targets[]`
-- `targets[]` — `name`, `dest`, and `remoteIds[]`; legacy single `remoteId` still works
+- `targets[]` — `name`, `dest`, `remoteIds[]`, and optional `postSyncCommand`; it runs on the target only after a successful upload job. Legacy single `remoteId` still works.
 - local item targets can capture path segments with ordinary tokens like `{project}` or `{name}` on the source side and reuse them on the destination side, for example `/usr/local/directadmin/data/users/{project}/nginx.conf` to `./{SERVER_NAME}/{project}_nginx.conf`. `{SERVER_NAME}` is always available and resolves to the selected remote/server name.
 
 ## Ignoring Files

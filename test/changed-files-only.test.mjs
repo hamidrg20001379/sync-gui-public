@@ -44,4 +44,8 @@ test('changed-files-only sync preserves newer destination files', async () => {
   assert.equal(await fsp.readFile(path.join(destination, 'a.txt'), 'utf8'), 'local changed');
   assert.equal(await fsp.readFile(path.join(destination, 'b.txt'), 'utf8'), 'server changed');
   assert.equal(await fsp.readFile(path.join(destination, 'server-only.txt'), 'utf8'), 'server only');
+  const forced = await runSync({ direction: 'up', force: true, itemTargets: { project: [0] } });
+  assert.equal(forced.exitCode, 0, forced.output);
+  assert.equal(await fsp.readFile(path.join(destination, 'b.txt'), 'utf8'), 'old local');
+  await assert.rejects(fsp.stat(path.join(destination, 'server-only.txt')), { code: 'ENOENT' });
 });
